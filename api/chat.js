@@ -45,11 +45,13 @@ module.exports = async (req, res) => {
       }
     }
     const j = await r.json().catch(() => ({}));
+    if (!r.ok) console.error('Gemini error', r.status, model, JSON.stringify(j).slice(0, 800));
     if (!r.ok) return res.status(r.status).json({ error: { code: r.status === 429 ? 'rate_limited' : 'upstream', message: (j.error && j.error.message) || ('Gemini error ' + r.status) }, model });
     cachedModel = model;
     const cand = (j.candidates || [])[0] || {};
     return res.status(200).json({ content: cand.content || null, finishReason: cand.finishReason || null, model, blocked: j.promptFeedback && j.promptFeedback.blockReason || null });
   } catch (e) {
+    console.error('chat exception', e);
     return res.status(502).json({ error: { code: 'upstream', message: String(e && e.message || e) } });
   }
 };

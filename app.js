@@ -678,7 +678,7 @@ async function askAnalyst(q, onDone) {
     if (res.truncated) chatNote('Cut short. Ask for less at a time.');
   } catch (e) {
     const keep = e && e.text; if (keep) richText(out, keep); else out.remove();
-    chatNote({ cancelled: 'Stopped.', not_granted: 'The analyst needs permission to use Claude. Reload and allow it.', rate_limited: 'Too many questions right now. Try again in a minute.', session_expired: 'Please sign in to Claude again.', refused: 'Claude declined that. Try rephrasing.', sampling_disabled: 'Claude is not available for this account.', prompt_too_large: 'Too much at once. Start a new chat.' }[e && e.code] || 'Something went wrong (' + ((e && e.code) || 'error') + '). Try again.');
+    chatNote({ cancelled: 'Stopped.', not_granted: 'The analyst needs permission to use Claude. Reload and allow it.', rate_limited: 'Too many questions right now. Try again in a minute.', session_expired: 'Please sign in to Claude again.', refused: 'Claude declined that. Try rephrasing.', sampling_disabled: 'Claude is not available for this account.', prompt_too_large: 'Too much at once. Start a new chat.' }[e && e.code] || 'Something went wrong (' + ((e && e.code) || 'error') + (e && e.message ? ': ' + String(e.message).slice(0, 240) : '') + '). Try again.');
     if (['not_granted', 'sampling_disabled', 'not_declared'].includes(e && e.code)) chat.sample = null;
     chat.turns.pop(); text = keep || '';
   } finally {
