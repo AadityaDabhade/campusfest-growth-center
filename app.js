@@ -634,7 +634,7 @@ function makeRelaySample() {
         if (opts.signal && opts.signal.aborted) throw { code: 'cancelled', text };
       }
       if (r.ok && j.modelIndex !== undefined) relay.modelIndex = j.modelIndex;
-      if (r.status === 503 || r.status === 504) { relay.modelIndex = 0; throw { code: 'upstream_error', message: 'Gemini is busy right now. Please try again in a minute.', text }; }
+      if (r.status === 503 || r.status === 504) { relay.modelIndex = 0; throw { code: 'upstream_error', message: 'Gemini did not answer. Last reason: ' + (r.status === 504 ? 'server time limit' : ((j.error && j.error.message) || 'busy')) + (j.model ? ' [' + j.model + ']' : ''), text }; }
       if (!r.ok) throw { code: r.status === 429 ? 'rate_limited' : (j.error && j.error.code === 'no_key') ? 'sampling_disabled' : r.status === 413 ? 'prompt_too_large' : 'upstream_error', message: (j.error && j.error.message) || 'HTTP ' + r.status, text };
       const c = j.content;
       if (!c || !c.parts || !c.parts.length) { if (text) break; throw { code: j.blocked ? 'refused' : 'empty_completion', message: j.finishReason || j.blocked || 'no answer' }; }
