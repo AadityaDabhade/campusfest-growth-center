@@ -611,6 +611,7 @@ function gSchema(s) {
   if (t === 'array') o.items = gSchema(s.items || {});
   return o;
 }
+const relay = { modelIndex: 0 };
 function makeRelaySample() {
   const f = async (input, opts = {}) => {
     const sys = input[0].content, contents = [];
@@ -620,10 +621,20 @@ function makeRelaySample() {
     let text = '';
     for (let round = 0; round < 7; round++) {
       if (opts.signal && opts.signal.aborted) throw { code: 'cancelled', text };
-      let r;
-      try { r = await fetch('api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ system: sys, contents, tools: round === 6 ? [] : decls }), signal: opts.signal }); }
-      catch (e) { throw { code: opts.signal && opts.signal.aborted ? 'cancelled' : 'upstream_error', message: String(e), text }; }
-      const j = await r.json().catch(() => ({}));
+      let r, j, tries = 0;
+      while (true) {
+        try { r = await fetch('api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ system: sys, contents, tools: round === 6 ? [] : decls, modelIndex: relay.modelIndex }), signal: opts.signal }); }
+        catch (e) { throw { code: opts.signal && opts.signal.aborted ? 'cancelled' : 'upstream_error', message: String(e), text }; }
+        j = await r.json().catch(() => ({}));
+        const busy = r.status === 504 || (r.status === 503 && j.error && j.error.code === 'busy');
+        if (!busy || tries >= 4 || (j.error && j.error.exhausted)) break;
+        tries++; relay.modelIndex = j.error && j.error.next !== undefined ? j.error.next : relay.modelIndex + 1;
+        if (opts.onStatus) opts.onStatus('Gemini is busy, trying another model…');
+        await new Promise(res => setTimeout(res, 800));
+        if (opts.signal && opts.signal.aborted) throw { code: 'cancelled', text };
+      }
+      if (r.ok && j.modelIndex !== undefined) relay.modelIndex = j.modelIndex;
+      if (r.status === 503 || r.status === 504) { relay.modelIndex = 0; throw { code: 'upstream_error', message: 'Gemini is busy right now. Please try again in a minute.', text }; }
       if (!r.ok) throw { code: r.status === 429 ? 'rate_limited' : (j.error && j.error.code === 'no_key') ? 'sampling_disabled' : r.status === 413 ? 'prompt_too_large' : 'upstream_error', message: (j.error && j.error.message) || 'HTTP ' + r.status, text };
       const c = j.content;
       if (!c || !c.parts || !c.parts.length) { if (text) break; throw { code: j.blocked ? 'refused' : 'empty_completion', message: j.finishReason || j.blocked || 'no answer' }; }
@@ -673,7 +684,7 @@ async function askAnalyst(q, onDone) {
   const tl = tools().map(t => Object.assign({}, t, { execute: async (input, ctx) => { used.push(t.name); out.firstChild && out.childNodes.length === 1 && out.textContent.startsWith('Thinking') && (out.textContent = 'Checking ' + t.name.replace(/_/g, ' ') + '…'); try { const r = await t.execute(input || {}, ctx); const s = JSON.stringify(r); return s.length > 30000 ? s.slice(0, 30000) : r; } catch (err) { throw new Error(err.message || String(err)); } } }));
   let text = '';
   try {
-    const res = await chat.sample([{ role: 'user', content: RULES() }].concat(chat.turns), { tools: tl, signal: ctl.signal, onText: ({ text: t }) => { text = t; richText(out, t); $('#msgs').scrollTop = 1e9; } });
+    const res = await chat.sample([{ role: 'user', content: RULES() }].concat(chat.turns), { tools: tl, signal: ctl.signal, onStatus: m => { if (!text) out.textContent = m; }, onText: ({ text: t }) => { text = t; richText(out, t); $('#msgs').scrollTop = 1e9; } });
     text = res.text; richText(out, text); chat.turns.push({ role: 'assistant', content: text });
     if (res.truncated) chatNote('Cut short. Ask for less at a time.');
   } catch (e) {
