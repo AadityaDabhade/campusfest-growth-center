@@ -17,7 +17,7 @@ The command center for **Challenge A: Attendee Growth**: a dashboard, a campaign
 | **Bets** | For each of our 5 bets: test vs comparison, extra attendees, next-tranche cost vs cap, decision. Release reserve money from here. |
 | **Signals** | Every Watch / Warn / Act flag with evidence, owner and a suggested action. |
 | **Tasks** | Board of tasks with owners and due dates, plus the decision log with a before/after follow-up. |
-| **Data** | Switch dataset, import a workbook, undo edits, change assumptions and thresholds, test the analyst. |
+| **Data** | What each dataset is, what the words mean, import a workbook, undo edits, change assumptions and thresholds, test the analyst. |
 | **Ask the analyst** | Questions in plain English, answered from the app's own data. It can set up actions for you to confirm. |
 
 **The insight → action workflow to try:**
@@ -25,21 +25,22 @@ The command center for **Challenge A: Attendee Growth**: a dashboard, a campaign
 2. Click **Release ₹1L** on Group Pass. A panel shows exactly what will change; nothing changes until you confirm.
 3. Confirm. The bet's planned budget rises, reserve left drops to ₹2.5L, a task goes to the owner with a review date, and the decision is logged with today's "expected extra attendees".
 4. Or ask the analyst *"Which bet should get reserve money first?"*, then *"Do it"*. It opens the same confirmation panel.
-5. Follow-up: on **Tasks**, a decision becomes reviewable once the date passes its review date. To see one now: move the date back a week (‹), act on a signal, move forward again, press **Review result**.
+5. Follow-up: on **Tasks**, a decision becomes reviewable once the date passes its review date. To see one now: set **As of** to Week 8, act on a signal with a review date in week 10, switch back to Week 10, press **Review result**.
 
 ## 2. Data: what is sourced and what is simulated
 
 | Dataset (picker at the top) | Source | Use |
 |---|---|---|
-| **2027 plan · live (simulated)**, the default | **Simulated by us**: our 2027 plan running in New Delhi, stopped at week 10 of 15 (14 Mar 2027). Same tables and columns as the 2025 file. | Shows how the team would run the plan and make the week-10 money decisions. |
-| **2025 actual · original (locked)** | **Provided dataset** (CampusFest 2025). Never changed. | Ground truth for testing the dashboard and the analyst. |
-| **2025 actual · with your edits** | Provided dataset plus your logged edits | "Changed data" testing. |
+| **2027 plan (simulated)**, the default | **Simulated by us**: our 2027 plan running in New Delhi, stopped at week 10 of 15 (14 Mar 2027). Same tables and columns as the 2025 file. | Shows how the team would run the plan and make the week-10 money decisions. |
+| **2025 actual** | **Provided dataset** (CampusFest 2025). The original is never changed; your changes are saved as edits on top, and a button switches between "original" and "with your edits". | Ground truth and "changed data" testing for the dashboard and the analyst. |
 | **Imported file** | Any workbook with the same sheets | Testing on new data (kept for the visit only). |
 
 **In the 2027 data, from our plan:** campaigns and bets, owners, planned budgets (₹6.5L working + ₹3.5L reserve), cost caps, how well each bet scales, test designs, targets (base 5,760 registrations / ~4,800 outside attendees; stretch ~10,400 / ~9,000) and the registration pace curve.
 **Generated** (`scripts/gen27.py`, fixed seed): people, registrations, status changes, interactions and daily spend. These are not real records; every 2027 screen is labelled *simulated data*.
 
 The simulation is set to tell our plan's week-10 story: Outreach and Group Pass work and earn reserve money, Alumni works but its next rupee is above cap, Day Scholars is too early to judge, Volunteers and Paid Social cost too much.
+
+**Why week 10?** A live tool only has data up to today. We stop the simulation at week 10 because that's the plan's first money decision: stop rules fire and the first reserve release happens. You can step back through weeks 1–10 with **As of**; weeks 11–15 haven't happened yet.
 
 ## 3. How the numbers are calculated
 
@@ -50,7 +51,7 @@ The simulation is set to tell our plan's week-10 story: Outreach and Group Pass 
 - A visitor = an admitted **and** verified check-in. Show-up = registered visitors ÷ registered.
 - Spend is net of credits. Reach is never added across days.
 - Campaign credit = registration source (a link, not proof of cause).
-- Every figure is tagged **S** (from records) or **A** (uses an assumption).
+- Estimates that use assumptions are marked **est.**; every other number is counted from the records.
 
 **Key formulas:**
 - **Expected visitors (A)** = confirmed × 0.75 + interested × 0.40 + waitlisted × 0.25, plus a 6% walk-in share. Assumptions are editable in Data.
