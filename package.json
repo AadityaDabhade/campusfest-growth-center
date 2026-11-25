@@ -1,0 +1,6 @@
+{
+  "name": "campusfest-growth-center",
+  "private": true,
+  "description": "CampusFest Growth Center: dashboard, campaign and task manager, and AI growth analyst",
+  "engines": { "node": ">=18" }
+}

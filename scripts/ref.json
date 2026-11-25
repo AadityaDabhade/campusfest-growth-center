@@ -1,0 +1,331 @@
+{
+ "dups": {
+  "daily": 2,
+  "reg_history": 4,
+  "checkins": 20,
+  "interactions": 0,
+  "people": 0,
+  "registrations": 0
+ },
+ "2025-02-28": {
+  "identified": 1614,
+  "registered": 1114,
+  "status": {
+   "confirmed": 899,
+   "interested": 103,
+   "cancelled": 76,
+   "waitlisted": 36
+  },
+  "visitors": 0,
+  "visitors_registered": 0,
+  "walkins": 0,
+  "showup": 0.0,
+  "spend": 135350,
+  "target": {
+   "effective_at": "2025-01-15T09:00:00",
+   "identified_external_people_goal": 3200,
+   "registration_goal": 2800,
+   "unique_external_visitors_goal": 1800,
+   "marketing_budget_inr": 240000,
+   "target_version": "Attendee launch plan"
+  },
+  "by_campaign": {
+   "C01": {
+    "spend": 23650,
+    "registered": 226,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C02": {
+    "spend": 52800,
+    "registered": 467,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C03": {
+    "spend": 24400,
+    "registered": 107,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C04": {
+    "spend": 12600,
+    "registered": 92,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C05": {
+    "spend": 7800,
+    "registered": 44,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C06": {
+    "spend": 7700,
+    "registered": 131,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C07": {
+    "spend": 6400,
+    "registered": 47,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   }
+  },
+  "days": {},
+  "entries": 0,
+  "peak": {},
+  "optouts": 79,
+  "form_started_people": 1267
+ },
+ "2025-03-15": {
+  "identified": 2393,
+  "registered": 1562,
+  "status": {
+   "confirmed": 1279,
+   "interested": 128,
+   "cancelled": 107,
+   "waitlisted": 48
+  },
+  "visitors": 0,
+  "visitors_registered": 0,
+  "walkins": 0,
+  "showup": 0.0,
+  "spend": 189575,
+  "target": {
+   "effective_at": "2025-03-15T09:00:00",
+   "identified_external_people_goal": 3600,
+   "registration_goal": 3200,
+   "unique_external_visitors_goal": 2200,
+   "marketing_budget_inr": 300000,
+   "target_version": "Attendee revised plan"
+  },
+  "by_campaign": {
+   "C01": {
+    "spend": 30100,
+    "registered": 318,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C02": {
+    "spend": 67200,
+    "registered": 553,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C03": {
+    "spend": 42700,
+    "registered": 180,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C04": {
+    "spend": 17325,
+    "registered": 141,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C05": {
+    "spend": 13650,
+    "registered": 106,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C06": {
+    "spend": 9800,
+    "registered": 169,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C07": {
+    "spend": 8800,
+    "registered": 95,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   }
+  },
+  "days": {},
+  "entries": 0,
+  "peak": {},
+  "optouts": 133,
+  "form_started_people": 1816
+ },
+ "2025-04-11": {
+  "identified": 3500,
+  "registered": 2800,
+  "status": {
+   "confirmed": 2500,
+   "cancelled": 183,
+   "waitlisted": 88,
+   "interested": 29
+  },
+  "visitors": 0,
+  "visitors_registered": 0,
+  "walkins": 0,
+  "showup": 0.0,
+  "spend": 276500,
+  "target": {
+   "effective_at": "2025-03-15T09:00:00",
+   "identified_external_people_goal": 3600,
+   "registration_goal": 3200,
+   "unique_external_visitors_goal": 2200,
+   "marketing_budget_inr": 300000,
+   "target_version": "Attendee revised plan"
+  },
+  "by_campaign": {
+   "C01": {
+    "spend": 42000,
+    "registered": 520,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C02": {
+    "spend": 93000,
+    "registered": 680,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C03": {
+    "spend": 61000,
+    "registered": 350,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C04": {
+    "spend": 31000,
+    "registered": 450,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C05": {
+    "spend": 19500,
+    "registered": 350,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C06": {
+    "spend": 14000,
+    "registered": 250,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   },
+   "C07": {
+    "spend": 16000,
+    "registered": 200,
+    "visitors": 0,
+    "showup": 0.0,
+    "cpv": null
+   }
+  },
+  "days": {},
+  "entries": 0,
+  "peak": {},
+  "optouts": 228,
+  "form_started_people": 3075
+ },
+ "2025-04-20": {
+  "identified": 3625,
+  "registered": 2800,
+  "status": {
+   "confirmed": 2500,
+   "cancelled": 183,
+   "waitlisted": 88,
+   "interested": 29
+  },
+  "visitors": 2050,
+  "visitors_registered": 1925,
+  "walkins": 125,
+  "showup": 0.6875,
+  "spend": 274000,
+  "target": {
+   "effective_at": "2025-03-15T09:00:00",
+   "identified_external_people_goal": 3600,
+   "registration_goal": 3200,
+   "unique_external_visitors_goal": 2200,
+   "marketing_budget_inr": 300000,
+   "target_version": "Attendee revised plan"
+  },
+  "by_campaign": {
+   "C01": {
+    "spend": 42000,
+    "registered": 520,
+    "visitors": 390,
+    "showup": 0.75,
+    "cpv": 107.7
+   },
+   "C02": {
+    "spend": 93000,
+    "registered": 680,
+    "visitors": 340,
+    "showup": 0.5,
+    "cpv": 273.5
+   },
+   "C03": {
+    "spend": 59000,
+    "registered": 350,
+    "visitors": 175,
+    "showup": 0.5,
+    "cpv": 337.1
+   },
+   "C04": {
+    "spend": 31000,
+    "registered": 450,
+    "visitors": 385,
+    "showup": 0.8556,
+    "cpv": 80.5
+   },
+   "C05": {
+    "spend": 19000,
+    "registered": 350,
+    "visitors": 275,
+    "showup": 0.7857,
+    "cpv": 69.1
+   },
+   "C06": {
+    "spend": 14000,
+    "registered": 250,
+    "visitors": 195,
+    "showup": 0.78,
+    "cpv": 71.8
+   },
+   "C07": {
+    "spend": 16000,
+    "registered": 200,
+    "visitors": 165,
+    "showup": 0.825,
+    "cpv": 97.0
+   }
+  },
+  "days": {
+   "2025-04-12": 1430,
+   "2025-04-13": 1345
+  },
+  "entries": 3250,
+  "peak": {
+   "2025-04-12T18": 400
+  },
+  "optouts": 229,
+  "form_started_people": 3075
+ }
+}
