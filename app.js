@@ -74,6 +74,7 @@ function dateOptions() {
 }
 function syncBar() {
   const ev = S.ds.event;
+  { const o = dateOptions(); $('#prevWk').disabled = S.asOf === o[o.length - 1][0]; $('#nextWk').disabled = S.asOf === o[0][0]; }
   $('#asOf').innerHTML = dateOptions().map(([d, l]) => `<option value="${d}" ${d === S.asOf ? 'selected' : ''}>${esc(l)}</option>`).join('');
   const sel = $('#dsSel'); sel.value = S.view === 'live27' ? 'live27' : S.view === 'imported' ? 'imported' : '25';
   $('#dsSel option[value=imported]').hidden = !S.importRaw;
@@ -530,6 +531,8 @@ function bind() {
   window.addEventListener('hashchange', setPage);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (S.drawer) closeDrawer(); else $('#chat').classList.remove('open'); } });
   $('#asOf').addEventListener('change', e => { if (isDate(e.target.value)) { S.asOf = e.target.value; rebuild(true); render(); } });
+  const step = dir => { const opts = dateOptions().map(o => o[0]).reverse(), i = opts.indexOf(S.asOf), j = Math.min(opts.length - 1, Math.max(0, i + dir)); if (j !== i) { S.asOf = opts[j]; rebuild(true); render(); } };
+  $('#prevWk').addEventListener('click', () => step(-1)); $('#nextWk').addEventListener('click', () => step(1));
   $('#dsSel').addEventListener('change', e => { const v = e.target.value; switchView(v === '25' ? (editsFor('25').length ? 'edit25' : 'orig25') : v); });
   $('#origToggle').addEventListener('click', () => switchView(S.view === 'edit25' ? 'orig25' : 'edit25', true));
   const onClick = async e => {
