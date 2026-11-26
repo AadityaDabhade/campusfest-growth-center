@@ -683,14 +683,14 @@ function makeRelaySample() {
         catch (e) { throw { code: opts.signal && opts.signal.aborted ? 'cancelled' : 'upstream_error', message: String(e), text }; }
         j = await r.json().catch(() => ({}));
         const busy = r.status === 504 || (r.status === 503 && j.error && j.error.code === 'busy');
-        if (!busy || tries >= 4 || (j.error && j.error.exhausted)) break;
+        if (!busy || tries >= 6 || (j.error && j.error.exhausted)) break;
         tries++; relay.modelIndex = j.error && j.error.next !== undefined ? j.error.next : relay.modelIndex + 1;
-        if (opts.onStatus) opts.onStatus('Gemini is busy, trying another model…');
+        if (opts.onStatus) opts.onStatus('That model is busy, switching to another…');
         await new Promise(res => setTimeout(res, 800));
         if (opts.signal && opts.signal.aborted) throw { code: 'cancelled', text };
       }
       if (r.ok && j.modelIndex !== undefined) relay.modelIndex = j.modelIndex;
-      if (r.status === 503 || r.status === 504) { relay.modelIndex = 0; throw { code: 'upstream_error', message: 'Gemini did not answer. Last reason: ' + (r.status === 504 ? 'server time limit' : ((j.error && j.error.message) || 'busy')) + (j.model ? ' [' + j.model + ']' : ''), text }; }
+      if (r.status === 503 || r.status === 504) { relay.modelIndex = 0; throw { code: 'upstream_error', message: 'No AI model answered. Last reason: ' + (r.status === 504 ? 'server time limit' : ((j.error && j.error.message) || 'busy')) + (j.model ? ' [' + j.model + ']' : ''), text }; }
       if (!r.ok) throw { code: r.status === 429 ? 'rate_limited' : (j.error && j.error.code === 'no_key') ? 'sampling_disabled' : r.status === 413 ? 'prompt_too_large' : 'upstream_error', message: (j.error && j.error.message) || 'HTTP ' + r.status, text };
       const c = j.content;
       if ((!c || !c.parts || !c.parts.length) && !text && !relay.emptyRetry) { relay.emptyRetry = true; round--; continue; }

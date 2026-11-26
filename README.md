@@ -75,13 +75,13 @@ The simulation is set to tell our plan's week-10 story: Outreach and Group Pass 
 - **Changed data:** it always reads the dataset and date selected at the top, including your edits.
 - **Testing:** Data → *Test the analyst* runs fixed questions. The expected answers are computed live by the engine, so they move when the data changes.
 
-**Model:** on the hosted site, Google Gemini (free tier, a Flash model) through `api/chat.js`. The API key stays on the server and the browser runs the data tools. Inside Claude, it uses the viewer's own Claude account.
+**Model:** on the hosted site, Google Gemini (free tier, a current Flash model) with Groq (free tier, Llama 3.3 70B) as an automatic backup when Gemini is busy, through `api/chat.js`. Keys stay on the server and the browser runs the data tools. `/api/health?check=1` tests both. Inside Claude, it uses the viewer's own Claude account.
 
 ## 5. Setup (hosted copy)
 
 1. Get a free API key at https://aistudio.google.com (Get API key).
 2. Import this repo in Vercel (https://vercel.com/new) with the default settings.
-3. In Project → Settings → Environment Variables, add `GEMINI_API_KEY` = your key. Optionally add `GEMINI_MODEL` to pin a model; by default it picks a current Flash model.
+3. In Project → Settings → Environment Variables, add `GEMINI_API_KEY` = your key. Recommended: also add `GROQ_API_KEY` (free at https://console.groq.com, no card) as an automatic backup when Gemini is busy. Optional: `GEMINI_MODEL` / `GROQ_MODEL` to pin models.
 4. Deploy. Open the link, then **Ask the analyst**.
 
 Local run: `npx vercel dev` (needs the same environment variable).
@@ -89,7 +89,7 @@ Local run: `npx vercel dev` (needs the same environment variable).
 ## 6. Tools used
 
 - Plain HTML, CSS and JavaScript (no framework). Charts are hand-drawn SVG. SheetJS (cdnjs) is used only for importing workbooks.
-- Vercel (Hobby, free) for hosting and the one serverless function. Google Gemini API (free tier) for the hosted analyst.
+- Vercel (Hobby, free) for hosting and the serverless functions. Google Gemini API and Groq API (both free tiers) for the hosted analyst.
 - Claude (Anthropic) for analysis, modelling, code and testing. Claude artifacts host the backup copy.
 - Python (pandas) and Node for the reference checks and the simulated data. Headless Chrome (Playwright) for UI tests on desktop and phone widths.
 

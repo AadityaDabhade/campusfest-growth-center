@@ -3,10 +3,11 @@
 const { BASE, modelOrder } = require('../lib/models');
 module.exports = async (req, res) => {
   res.setHeader('cache-control', 'no-store');
-  const key = process.env.GEMINI_API_KEY, model = process.env.GEMINI_MODEL || 'auto';
-  if (!req.query || !req.query.check) return res.status(200).json({ ok: !!key, model });
+  const key = process.env.GEMINI_API_KEY, model = process.env.GEMINI_MODEL || 'auto', groq = !!process.env.GROQ_API_KEY;
+  if (!req.query || !req.query.check) return res.status(200).json({ ok: !!key || groq, model, groq_backup: groq });
   if (!key) return res.status(200).json({ ok: false, problem: 'GEMINI_API_KEY is not set in Vercel → Settings → Environment Variables (then redeploy).' });
-  const out = { key_starts_with: key.slice(0, 4), key_length: key.length };
+  const out = { key_starts_with: key.slice(0, 4), key_length: key.length, groq_backup: groq };
+  if (groq) { try { const { groqOrder, callGroq } = require('../lib/groq'); const m = (await groqOrder(process.env.GROQ_API_KEY))[0]; const t1 = Date.now(); const g = await callGroq(process.env.GROQ_API_KEY, m, { contents: [{ role: 'user', parts: [{ text: 'Reply with the single word: ready' }] }] }); out.groq_model = m; out.groq_ok = g.ok; out.groq_seconds = (Date.now() - t1) / 1000; out.groq_reply = g.ok ? g.content : g.message; } catch (e) { out.groq_ok = false; out.groq_error = String(e.message || e); } }
   try {
     const lr = await fetch(BASE + '/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
     const lj = await lr.json().catch(() => ({}));
