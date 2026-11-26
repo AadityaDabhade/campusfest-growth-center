@@ -152,7 +152,7 @@
     return ds;
   }
 
-  /* "Reached" = an outside person who acted (left details, opened a page, signed up). People only on a college list are used to judge bets, never counted as reached. */
+  /* "Responded" (stored as identified) = an outside person who acted (left details, opened a page, signed up). People only on a college list are used to judge bets, never counted as reached. */
   function reached(p) { return p.first_touch_source !== 'college_list'; }
   function campName(ds, id) { if (!id) return 'No campaign (walk-in / unattributed)'; const c = ds.camps.get(id); return c ? c.campaign_name : id; }
   function ownerName(ds, id) { return ds.owners[id] || id || 'Growth lead'; }
@@ -440,7 +440,7 @@
     return { asOf: D, campaign: filt ? campName(ds, campaignId) : 'All campaigns', basis: filt ? 'People grouped by first-touch campaign' : 'All external people', steps, walkins: filt ? 0 : s.walkins, visitors_total: visited };
   }
 
-  /* The same four steps for every dataset: reached → registered → confirmed → attended. */
+  /* The same four steps for every dataset: responded → registered → confirmed → attended. */
   function funnelView(ds, D, assump, campaignId) {
     const s = snapshot(ds, D), f = funnel(ds, D, campaignId), t = s.target || {}, filt = campaignId && campaignId !== 'all';
     const get = n => (f.steps.find(x => x.step.startsWith(n)) || {}).n || 0, ended = D >= ds.event.eventEndDay, started = D >= ds.event.eventStartDay;
@@ -451,7 +451,7 @@
     else { const pr = perRegistrant(s, assump, 'value', daysBetween(D, ds.event.eventStartDay)); attended = pr !== null ? Math.round(s.registered * pr) : null; walkins = 0; expected = true; }
     const sh = shareAt(ds, D);
     const steps = [
-      { key: 'reached', label: 'Reached', help: 'Outside people who left their details (a page visit, form or email sign-up). Each person counted once.', n: get('Identified'), target: filt ? null : t.identified_external_people_goal || null },
+      { key: 'reached', label: 'Responded', help: 'Outside people who did something back: left their details, opened a page, signed up or walked in. Not everyone we messaged. Each person counted once.', n: get('Identified'), target: filt ? null : t.identified_external_people_goal || null },
       { key: 'registered', label: 'Registered', help: 'Signed up for a pass.', n: get('Registered'), target: filt ? null : t.registration_goal || null, pace: !filt && sh !== null && !started ? Math.round(t.registration_goal * sh) : null },
       { key: 'confirmed', label: 'Confirmed', help: 'Said "I am coming" (latest status on this date).', n: get('Confirmed'), target: null },
       { key: 'attended', label: expected ? 'Will come (from today\'s sign-ups)' : 'Came', help: expected ? 'Estimate for people already registered: each status × the chance it comes. The forecast on Overview ("heading for") also adds sign-ups still to come and walk-ins.' : 'Scanned in at the gate and verified, counted once per person.', n: attended, expected, target: filt ? null : t.unique_external_visitors_goal || null }
@@ -695,11 +695,11 @@
       }
       if (before && p.key !== 'visitors' && p.required_per_day) {
         const ratio = p.run_rate_7d / p.required_per_day;
-        add({ id: 'pace-' + p.key, term: p.key === 'identified' ? 'Reach' : 'Register', level: grade(ratio, R.pace_ratio), title: ({ identified: 'People reached', registered: 'Registrations' })[p.key] + ': behind pace', reason: p.run_rate_7d + ' a day vs ' + p.required_per_day + ' needed', value: round(ratio, 2),
+        add({ id: 'pace-' + p.key, term: p.key === 'identified' ? 'Responses' : 'Register', level: grade(ratio, R.pace_ratio), title: ({ identified: 'People who responded', registered: 'Registrations' })[p.key] + ': behind pace', reason: p.run_rate_7d + ' a day vs ' + p.required_per_day + ' needed', value: round(ratio, 2),
           evidence: 'Last 7 days: ' + p.run_rate_7d + '/day. Needed: ' + p.required_per_day + '/day for ' + p.days_left + ' days to reach ' + nf(p.goal) + ' (now ' + nf(p.actual) + ').', matters: 'The goal needs a faster daily rate than we have.', if_nothing: 'We finish about ' + nf(p.actual + p.run_rate_7d * p.days_left) + ' of ' + nf(p.goal) + '.',
           owner: 'Growth lead', action: 'Shift effort to the cheapest proven campaign.', trust: 'proven' });
       }
-      if (ended) add({ id: 'goal-' + p.key, term: 'Outcome', level: grade(p.attainment, R.attainment), title: ({ identified: 'People reached', registered: 'Registrations', visitors: 'Outside visitors' })[p.key] + ': below goal', reason: nf(p.actual) + ' of ' + nf(p.goal) + ' (' + pct(p.attainment) + ')', value: p.attainment,
+      if (ended) add({ id: 'goal-' + p.key, term: 'Outcome', level: grade(p.attainment, R.attainment), title: ({ identified: 'People who responded', registered: 'Registrations', visitors: 'Outside visitors' })[p.key] + ': below goal', reason: nf(p.actual) + ' of ' + nf(p.goal) + ' (' + pct(p.attainment) + ')', value: p.attainment,
         evidence: nf(p.actual) + ' of ' + nf(p.goal) + '.', matters: 'This is the final result.', if_nothing: 'Carry the lesson into the next plan.', owner: 'Growth lead', action: 'Find the step that lost the most people and fix it next time.', trust: 'proven' });
     });
     // 2. budget
