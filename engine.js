@@ -20,7 +20,7 @@
     plan_decisions: ['decision_id', 'decided_at', 'kind']
   };
   const TIME_FIELDS = { event: ['history_start', 'history_end', 'event_starts_at', 'event_ends_at', 'plan_start', 'registration_opens', 'today', 'competition_opens', 'big_push'], plan_decisions: ['decided_at', 'review_at'], targets: ['effective_at'], campaigns: ['created_at', 'planned_start_at', 'planned_end_at'], daily: ['activity_date'], people: ['first_seen_at'], interactions: ['occurred_at'], registrations: ['registered_at'], reg_history: ['effective_at'], checkins: ['occurred_at'] };
-  const NUM_FIELDS = { pace_curve: ['week', 'share'], plan_decisions: ['amount_inr'], event: ['reserve_inr', 'tranche_inr', 'gate_capacity_per_hour'], targets: ['identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch', 'teams_goal', 'teams_by_week6', 'teams_by_week8'], daily: ['impressions', 'clicks', 'reported_reach', 'landing_page_sessions', 'registration_starts', 'marketing_spend_inr'], campaigns: ['planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'bet_rank', 'reserve_released_inr'] };
+  const NUM_FIELDS = { pace_curve: ['week', 'share'], plan_decisions: ['amount_inr'], event: ['reserve_inr', 'tranche_inr', 'gate_capacity_per_hour', 'hostel_students', 'day_scholars'], targets: ['identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch', 'teams_goal', 'teams_by_week6', 'teams_by_week8'], daily: ['impressions', 'clicks', 'reported_reach', 'landing_page_sessions', 'registration_starts', 'marketing_spend_inr'], campaigns: ['planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'bet_rank', 'reserve_released_inr'] };
   const ACTIVE = ['confirmed', 'interested', 'waitlisted'];
   const DEFAULT_OWNERS = { T03: 'Meera Iyer', T04: 'Arjun Verma', T05: 'Nisha Rao', T06: 'Dev Malhotra' };
 
@@ -130,7 +130,7 @@
       timezone: ev.timezone || 'Asia/Kolkata', currency: ev.currency || 'INR',
       simulated: ev.simulated === true || ev.simulated === 'TRUE' || ev.simulated === 1, city: ev.city || null,
       planStart: day(ev.plan_start), regOpens: day(ev.registration_opens), reserve: num(ev.reserve_inr), tranche: num(ev.tranche_inr),
-      today: day(ev.today), gateCap: num(ev.gate_capacity_per_hour) || null, competitionOpens: day(ev.competition_opens), bigPush: day(ev.big_push)
+      today: day(ev.today), gateCap: num(ev.gate_capacity_per_hour) || null, competitionOpens: day(ev.competition_opens), bigPush: day(ev.big_push), hostel: num(ev.hostel_students) || 0, dayScholars: num(ev.day_scholars) || 0
     };
     const skip = new Set(raw.plan_skip || []);
     ds.plan = (tb.plan_decisions || []).filter(x => x.decision_id && !skip.has(x.decision_id)).sort((a, b) => (a.decided_at || '').localeCompare(b.decided_at || ''));
@@ -152,6 +152,8 @@
     return ds;
   }
 
+  /* "Reached" = an outside person who acted (left details, opened a page, signed up). People only on a college list are used to judge bets, never counted as reached. */
+  function reached(p) { return p.first_touch_source !== 'college_list'; }
   function campName(ds, id) { if (!id) return 'No campaign (walk-in / unattributed)'; const c = ds.camps.get(id); return c ? c.campaign_name : id; }
   function ownerName(ds, id) { return ds.owners[id] || id || 'Growth lead'; }
 
@@ -175,7 +177,7 @@
     const s = { D, cut };
     // people
     s.identified = 0; s.identifiedByFirst = {};
-    tb.people.forEach(p => { if (p.person_type === 'external' && p.first_seen_at && p.first_seen_at <= cut) { s.identified++; const k = p.first_campaign_id || null; s.identifiedByFirst[k] = (s.identifiedByFirst[k] || 0) + 1; } });
+    tb.people.forEach(p => { if (p.person_type === 'external' && reached(p) && p.first_seen_at && p.first_seen_at <= cut) { s.identified++; const k = p.first_campaign_id || null; s.identifiedByFirst[k] = (s.identifiedByFirst[k] || 0) + 1; } });
     s.excluded = {}; tb.people.forEach(p => { if (p.person_type !== 'external' && p.first_seen_at && p.first_seen_at <= cut) s.excluded[p.person_type] = (s.excluded[p.person_type] || 0) + 1; });
     // registrations with latest status
     s.regs = []; s.regByPerson = new Map(); s.hostReg = new Map();
@@ -194,20 +196,20 @@
     s.regByPerson.forEach(x => { s.status[x.status] = (s.status[x.status] || 0) + 1; });
     s.active = ACTIVE.reduce((a, k) => a + (s.status[k] || 0), 0);
     // check-ins
-    s.visitors = new Map(); s.entries = 0; s.hourly = {}; s.byDay = {}; s.chk = { denied: 0, pending: 0, unverified: 0, manual: 0, unattributed: 0, nonExternal: 0, total: 0 };
+    s.visitors = new Map(); s.hostVisitors = new Map(); s.entries = 0; s.hourly = {}; s.byDay = {}; s.chk = { denied: 0, pending: 0, unverified: 0, manual: 0, unattributed: 0, nonExternal: 0, total: 0 };
     tb.checkins.forEach(c => {
       if (!c.occurred_at || c.occurred_at > cut) return;
       s.chk.total++;
       if (c.result === 'denied') s.chk.denied++; if (c.result === 'pending') s.chk.pending++; if (c.verification !== 'verified') s.chk.unverified++;
       if (c.source === 'manual') s.chk.manual++; if (!c.campaign_id) s.chk.unattributed++;
       if (c.result !== 'admitted' || c.verification !== 'verified') return;
-      if (!ds.ext.has(c.person_id)) { s.chk.nonExternal++; return; }
+      if (!ds.ext.has(c.person_id)) { s.chk.nonExternal++; if (ds.host.has(c.person_id)) { const pv = s.hostVisitors.get(c.person_id); if (!pv || c.occurred_at < pv) s.hostVisitors.set(c.person_id, c.occurred_at); if (c.source !== 'concert_gate') { const h = c.occurred_at.slice(0, 13); s.hourly[h] = (s.hourly[h] || 0) + 1; } } return; }
       s.entries++;
       const h = c.occurred_at.slice(0, 13); s.hourly[h] = (s.hourly[h] || 0) + 1;
       const d = day(c.occurred_at); if (!s.byDay[d]) s.byDay[d] = new Set(); s.byDay[d].add(c.person_id);
       const prev = s.visitors.get(c.person_id); if (!prev || c.occurred_at < prev) s.visitors.set(c.person_id, c.occurred_at);
     });
-    s.visitorCount = s.visitors.size;
+    s.visitorCount = s.visitors.size; s.hostVisitorCount = s.hostVisitors.size;
     s.visitorsRegistered = 0; s.visitors.forEach((t, p) => { if (s.regByPerson.has(p)) s.visitorsRegistered++; });
     s.walkins = s.visitorCount - s.visitorsRegistered;
     s.showup = div(s.visitorsRegistered, s.registered);
@@ -242,6 +244,8 @@
     showup_waitlisted: { value: 0.20, low: 0.0, high: 0.30, label: 'Show-up of waitlisted registrants', tag: 'A', evidence: '2025: 0 of 88 (no waitlist release then); 2027 releases unscanned passes at 2 pm' },
     walkin_share: { value: 0.06, low: 0.04, high: 0.08, label: 'Walk-ins as a share of all visitors', tag: 'A', evidence: '2025: 6.1% of visitors had not registered' },
     future_regs: { value: 1.0, low: 0.7, high: 1.2, label: 'Registrations still to come vs the plan curve', tag: 'A', evidence: 'Late sign-ups can fall short of the curve more easily than beat it' },
+    hostel_attend: { value: 0.90, low: 0.85, high: 0.95, label: 'Hostel students who come (counted at the concert gate)', tag: 'A', evidence: 'Plan assumption: they are already on campus; no 2025 data on our own students' },
+    dayscholar_attend: { value: 0.65, low: 0.55, high: 0.75, label: 'Day scholars who come (student-ID lane)', tag: 'A', evidence: 'Plan assumption: no 2025 data on our own students' },
     scale_factor: { value: 0.5, low: 0.4, high: 0.7, label: 'How well extra spend scales (1 = no diminishing returns)', tag: 'A', evidence: 'Planning value; checked at each review' },
     release_yield: { value: 0.8, low: 0.5, high: 1.0, label: 'How much of a bet\'s estimated gain new money delivers', tag: 'A', evidence: 'Scaled bets usually do a bit worse than their test' },
     cost_cap: { value: 250, low: 200, high: 300, label: 'Cost cap per extra attendee (₹)', tag: 'A', evidence: 'Plan cap' },
@@ -299,7 +303,7 @@
     const base = t ? t.unique_external_visitors_goal : null, stretch = t ? (t.stretch_visitors_goal || null) : null;
     const out = { asOf: D, target: base, stretch, registered: s.registered, visitors_so_far: s.visitorCount };
     const verdict = (p10, p50) => base ? (p10 >= base ? 'Safe' : p50 >= base ? 'Ahead, not safe yet' : 'Off track') : null;
-    if (D >= ev.eventEndDay) return Object.assign(out, { mode: 'actual', bad: s.visitorCount, likely: s.visitorCount, good: s.visitorCount, verdict: base ? (s.visitorCount >= base ? 'Hit' : 'Missed') : null, chance: null, basis: 'Verified check-ins: the fest is over' });
+    if (D >= ev.eventEndDay) { const all = s.visitorCount + s.hostVisitorCount, tb = t ? t.all_attendees_base : null; return Object.assign(out, { mode: 'actual', bad: s.visitorCount, likely: s.visitorCount, good: s.visitorCount, verdict: base ? (s.visitorCount >= base ? 'Hit' : 'Missed') : null, chance: null, basis: 'Verified check-ins: the fest is over', total: (ev.hostel || ev.dayScholars) ? { bad: all, likely: all, good: all, target: tb, stretch: t ? t.all_attendees_stretch : null, our_students: s.hostVisitorCount, verdict: tb ? (all >= tb ? 'Hit' : 'Missed') : null } : null }); }
     const R = s.registered; if (!R) return Object.assign(out, { mode: 'too early', verdict: null, basis: 'No registrations yet' });
     const daysLeft = daysBetween(D, ev.eventStartDay), live = D >= ev.eventStartDay;
     let future = 0, how; const curve = shareAt(ds, D) !== null;
@@ -329,6 +333,9 @@
       (o.extra || []).forEach(x => { if (x.cost > 0) total += (x.amount / x.cost) * (x.amount > 0 ? y : 1); });
       runs.push(Math.max(s.visitorCount, total));
     }
+    // our own students (no registration step): hostel students and day scholars, each with its own range
+    const H = ev.hostel || 0, DS = ev.dayScholars || 0, totals = [];
+    if (H || DS) { const rh = seeded(ds.label + '|host|' + D); for (let i = 0; i < N; i++) { const h = H * draw(rh(), assump, 'hostel_attend') + DS * draw(rh(), assump, 'dayscholar_attend'); totals.push(runs[i] + Math.max(s.hostVisitorCount, live ? Math.max(s.hostVisitorCount, h) : h)); } }
     const pick = arr => { const a = arr.slice().sort((x, y) => x - y); return { bad: a[Math.floor(N * 0.1)], likely: a[Math.floor(N * 0.5)], good: a[Math.floor(N * 0.9)] }; };
     const q = pick(runs), q0 = pick(plain);
     const pr0 = perRegistrant(s, assump, 'value', daysLeft);
@@ -337,6 +344,7 @@
       chance: base ? round(runs.filter(v => v >= base).length / N, 2) : null, chance_stretch: stretch ? round(runs.filter(v => v >= stretch).length / N, 2) : null,
       before_extra: o.extra && o.extra.length ? { bad: r10(q0.bad), likely: r10(q0.likely), good: r10(q0.good), verdict: verdict(q0.bad, q0.likely) } : null,
       projected_registrations: live ? R : Math.round(R + future), attend_per_registrant: round(pr0, 3), days_left: daysLeft,
+      total: totals.length ? (() => { const q2 = pick(totals), tb = t.all_attendees_base || null; return { bad: r10(q2.bad), likely: r10(q2.likely), good: r10(q2.good), target: tb, stretch: t.all_attendees_stretch || null, our_students: r10(q2.likely - q.likely), verdict: tb ? (q2.bad >= tb ? 'Safe' : q2.likely >= tb ? 'Ahead, not safe yet' : 'Off track') : null }; })() : null,
       basis: live ? 'Visitors so far + confirmed people not yet in × 40–60% on day 2 + walk-ins' : 'Final registrations (' + how + ') × chance each one comes, by status, + walk-ins. Played 1,000 times with each input drawn from its range.'
     });
   }
@@ -364,7 +372,7 @@
     return {
       asOf: D, dataset: ds.label, target: g,
       identified: s.identified, registered: s.registered, passRegistered: s.passRegistered, competitors: s.compRegistered, teams: s.teams, teamPlan: teamPlan(ds, D, t), active: s.active, status: Object.assign({}, s.status),
-      visitors: s.visitorCount, visitorsRegistered: s.visitorsRegistered, walkins: s.walkins,
+      visitors: s.visitorCount, visitorsRegistered: s.visitorsRegistered, walkins: s.walkins, ourStudents: s.hostVisitorCount, allVisitors: s.visitorCount + s.hostVisitorCount, hasHost: !!(ds.event.hostel || ds.event.dayScholars),
       showup: round(s.showup, 4), walkinShare: round(div(s.walkins, s.visitorCount), 4),
       spend: s.spend, budgetUsed: g ? round(div(s.spend, g.budget), 4) : null,
       costPerVisitor: round(div(s.spend, s.visitorCount), 1), costPerRegistration: round(div(s.spend, s.registered), 1),
@@ -389,7 +397,7 @@
       let visitors = 0, visReg = 0; s.visitors.forEach((t, p) => { if (attributionOf(ds, s, p, o.attribution) === id) { visitors++; if (s.regByPerson.has(p)) visReg++; } });
       const ia = s.ia[id] || {};
       const pc = t => (s.iaPeopleByCamp[id + '|' + t] || new Set()).size;
-      const expected = st.confirmed * A(assump, 'showup_confirmed') + st.interested * A(assump, 'showup_interested') + st.waitlisted * A(assump, 'showup_waitlisted');
+      const expected = st.confirmed * A(assump, 'showup_confirmed') + st.interested * interestedRate(A(assump, 'showup_interested'), A(assump, 'showup_interested_late'), daysBetween(D, ds.event.eventStartDay)) + st.waitlisted * A(assump, 'showup_waitlisted');
       return {
         campaign_id: id, campaign: campName(ds, id), channel: c.channel || (id ? '' : 'none'), owner_id: c.owner_id || null, owner: id ? ownerName(ds, c.owner_id) : 'Growth lead',
         kind: c.kind || (id ? 'channel' : ''), bet_type: c.bet_type || null, audience: c.audience_type === 'host' ? 'our students' : 'outside', cost_cap_inr: c.cost_cap_inr || null, reserve_released_inr: cs.released || 0,
@@ -415,7 +423,7 @@
   function funnel(ds, D, campaignId) {
     const s = snapshot(ds, D), filt = campaignId !== undefined && campaignId !== 'all';
     const inC = p => { if (!filt) return true; const pp = ds.people.get(p); return pp && (pp.first_campaign_id || null) === (campaignId || null); };
-    let identified = 0; ds.tables.people.forEach(p => { if (p.person_type === 'external' && p.first_seen_at && p.first_seen_at <= s.cut && inC(p.person_id)) identified++; });
+    let identified = 0; ds.tables.people.forEach(p => { if (p.person_type === 'external' && reached(p) && p.first_seen_at && p.first_seen_at <= s.cut && inC(p.person_id)) identified++; });
     const cnt = set => { let n = 0; (set || new Set()).forEach(p => { if (inC(p)) n++; }); return n; };
     let registered = 0, confirmed = 0, active = 0; s.regByPerson.forEach((r, p) => { if (inC(p)) { registered++; if (r.status === 'confirmed') confirmed++; if (ACTIVE.includes(r.status)) active++; } });
     let visited = 0, visitedReg = 0; s.visitors.forEach((t, p) => { if (inC(p)) { visited++; if (s.regByPerson.has(p)) visitedReg++; } });
@@ -446,7 +454,7 @@
       { key: 'reached', label: 'Reached', help: 'Outside people who left their details (a page visit, form or email sign-up). Each person counted once.', n: get('Identified'), target: filt ? null : t.identified_external_people_goal || null },
       { key: 'registered', label: 'Registered', help: 'Signed up for a pass.', n: get('Registered'), target: filt ? null : t.registration_goal || null, pace: !filt && sh !== null && !started ? Math.round(t.registration_goal * sh) : null },
       { key: 'confirmed', label: 'Confirmed', help: 'Said "I am coming" (latest status on this date).', n: get('Confirmed'), target: null },
-      { key: 'attended', label: expected ? 'Expected to come' : 'Came', help: expected ? 'Estimate for people registered so far: each status × the chance it comes. The Overview forecast also adds registrations still to come and walk-ins.' : 'Scanned in at the gate and verified, counted once per person.', n: attended, expected, target: filt ? null : t.unique_external_visitors_goal || null }
+      { key: 'attended', label: expected ? 'Will come (from today\'s sign-ups)' : 'Came', help: expected ? 'Estimate for people already registered: each status × the chance it comes. The forecast on Overview ("heading for") also adds sign-ups still to come and walk-ins.' : 'Scanned in at the gate and verified, counted once per person.', n: attended, expected, target: filt ? null : t.unique_external_visitors_goal || null }
     ];
     steps.forEach((x, i) => { x.from_prev = i && steps[i - 1].n ? round(x.n / steps[i - 1].n, 4) : null; x.cost_each = x.n ? round(spend / x.n, 0) : null; });
     let worst = null; steps.forEach((x, i) => { if (i && x.from_prev !== null && (!worst || x.from_prev < worst.from_prev)) worst = x; });
@@ -465,7 +473,7 @@
     const out = { days, spend: z(), registrations: z(), identified: z(), visitors: z(), form_starts: z(), sessions: z(), cancellations: z() };
     const cf = id => !campaignId || campaignId === 'all' || (id || null) === campaignId;
     ds.tables.daily.forEach(r => { const i = idx.get(day(r.activity_date)); if (i === undefined || !cf(r.campaign_id)) return; out.spend[i] += num(r.marketing_spend_inr); out.form_starts[i] += num(r.registration_starts); out.sessions[i] += num(r.landing_page_sessions); });
-    ds.tables.people.forEach(p => { if (p.person_type !== 'external') return; const i = idx.get(day(p.first_seen_at)); if (i !== undefined && cf(p.first_campaign_id)) out.identified[i]++; });
+    ds.tables.people.forEach(p => { if (p.person_type !== 'external' || !reached(p)) return; const i = idx.get(day(p.first_seen_at)); if (i !== undefined && cf(p.first_campaign_id)) out.identified[i]++; });
     const firstReg = new Map(); ds.regs.forEach(r => { if (ds.ext.has(r.person_id) && !firstReg.has(r.person_id)) firstReg.set(r.person_id, r); });
     firstReg.forEach(r => { const i = idx.get(day(r.registered_at)); if (i !== undefined && cf(r.campaign_id)) out.registrations[i]++; });
     const firstVisit = new Map(); ds.tables.checkins.forEach(c => { if (c.result === 'admitted' && c.verification === 'verified' && ds.ext.has(c.person_id)) { const p = firstVisit.get(c.person_id); if (!p || c.occurred_at < p) firstVisit.set(c.person_id, c.occurred_at); } });
@@ -585,7 +593,7 @@
       const g = (arms[p.test_bet] = arms[p.test_bet] || { test: z(), comparison: z(), direct: z() })[k]; g.n++;
       const r = s.regByPerson.get(p.person_id) || s.hostReg.get(p.person_id); if (r) { g.reg++; g[r.status]++; }
     });
-    const sc = A(assump, 'showup_confirmed'), si = A(assump, 'showup_interested'), sw = A(assump, 'showup_waitlisted');
+    const sc = A(assump, 'showup_confirmed'), si = interestedRate(A(assump, 'showup_interested'), A(assump, 'showup_interested_late'), daysBetween(D, ds.event.eventStartDay)), sw = A(assump, 'showup_waitlisted');
     const apr = g => g.reg ? (g.confirmed * sc + g.interested * si + g.waitlisted * sw) / g.reg : 0;
     const minN = 300;
     return bets.map(c => {
@@ -620,9 +628,9 @@
       else if (!fair) { decision = 'Too early'; why = 'Not a fair test yet: ' + evidence.join('; '); }
       else if (hasComp && !evidenceOk) { decision = 'Stop'; why = 'Fair test, but no clear gap over the comparison group (' + evidence.join('; ') + ')'; }
       else if (!(extra > 0)) { decision = 'Stop'; why = 'No lift over the comparison group'; }
-      else if (avg > cap) { decision = 'Change'; why = 'Cost per extra attendee ' + rs(avg) + ' is above the ' + rs(cap) + ' cap'; }
-      else if (next <= cap && (avgLow === null || avgLow <= cap)) { decision = 'Scale'; why = 'Next-tranche cost ' + rs(next) + ' is under the ' + rs(cap) + ' cap'; }
-      else { decision = 'Keep'; why = 'Works at ' + rs(avg) + ' each, but the next rupee would cost ' + rs(next) + ', above the ' + rs(cap) + ' cap: no tranche money'; }
+      else if (avg > cap) { decision = 'Change'; why = 'Each extra attendee costs ' + rs(avg) + ', above its ' + rs(cap) + ' limit'; }
+      else if (next <= cap && (avgLow === null || avgLow <= cap)) { decision = 'Scale'; why = 'The next extra attendee would cost about ' + rs(next) + ', under its ' + rs(cap) + ' limit'; }
+      else { decision = 'Keep'; why = 'Works at ' + rs(avg) + ' per extra attendee, but the next one would cost about ' + rs(next) + ', above its ' + rs(cap) + ' limit: no reserve money'; }
       return {
         campaign_id: id, bet: c.campaign_name, rank: c.bet_rank || null, type: c.bet_type || null, owner_id: c.owner_id, owner: ownerName(ds, c.owner_id), audience: c.audience_type === 'host' ? 'our students' : 'outside', test_design: c.test_design || '',
         weeks_live: round(weeks, 1), spend: sp, planned_budget_inr: cs.planned, reserve_released_inr: cs.released, last_release: cs.lastRelease, status: cs.status,
@@ -744,7 +752,7 @@
     const s = snapshot(ds, D), cut = s.cut;
     const cmeta = id => { const c = ds.camps.get(id) || {}; return { campaign_name: campName(ds, id || null), channel: c.channel || null, owner_name: ownerName(ds, c.owner_id) }; };
     const tfields = t => ({ date: day(t), month: t ? t.slice(0, 7) : null, week: t ? weekStart(day(t)) : null, hour: t ? Number(t.slice(11, 13)) : null, weekday: t ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(day(t) + 'T00:00:00Z').getUTCDay()] : null });
-    if (table === 'people') return ds.tables.people.filter(p => p.first_seen_at && p.first_seen_at <= cut).map(p => Object.assign({ person_id: p.person_id, person_type: p.person_type, first_touch_source: p.first_touch_source, campaign_id: p.first_campaign_id, registered: s.regByPerson.has(p.person_id), visited: s.visitors.has(p.person_id), status: (s.regByPerson.get(p.person_id) || {}).status || null }, cmeta(p.first_campaign_id), tfields(p.first_seen_at)));
+    if (table === 'people') return ds.tables.people.filter(p => p.first_seen_at && p.first_seen_at <= cut && reached(p)).map(p => Object.assign({ person_id: p.person_id, person_type: p.person_type, first_touch_source: p.first_touch_source, campaign_id: p.first_campaign_id, registered: s.regByPerson.has(p.person_id), visited: s.visitors.has(p.person_id), status: (s.regByPerson.get(p.person_id) || {}).status || null }, cmeta(p.first_campaign_id), tfields(p.first_seen_at)));
     if (table === 'registrations') return s.regs.map(r => Object.assign({ registration_id: r.registration_id, person_id: r.person_id, status: r.status, campaign_id: r.campaign_id, visited: s.visitors.has(r.person_id) }, cmeta(r.campaign_id), tfields(r.registered_at)));
     if (table === 'visitors') return Array.from(s.visitors.entries()).map(([p, t]) => { const r = s.regByPerson.get(p); return Object.assign({ person_id: p, registered: !!r, status: r ? r.status : null, campaign_id: r ? r.campaign_id : null, first_entry: t }, cmeta(r ? r.campaign_id : null), tfields(t)); });
     if (table === 'checkins') return ds.tables.checkins.filter(c => c.occurred_at && c.occurred_at <= cut).map(c => Object.assign({ event_id: c.event_id, person_id: c.person_id, result: c.result, verification: c.verification, source: c.source, person_type: (ds.people.get(c.person_id) || {}).person_type || null, campaign_id: c.campaign_id }, cmeta(c.campaign_id), tfields(c.occurred_at)));

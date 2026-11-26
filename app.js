@@ -47,7 +47,7 @@ const explainBtn = () => `<button class="link" data-act="explain" type="button">
 function head(title, sub) { return `<div class="ph"><div><h1>${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}</div>${explainBtn()}</div>${rehearsal()}`; }
 function rehearsal() {
   const t = S.ds.event.today; if (!t || S.asOf <= t) return '';
-  return `<div class="banner"><b>Rehearsal.</b> "Today" is the end of week 10 (${esc(dshort(t))}). Later dates show one simulated run where the team takes the plan's decisions on time. It is not the best case: one bet fails and ₹2.5L of reserve stays unspent.</div>`;
+  return `<div class="banner"><b>Rehearsal.</b> "Today" is the end of week 10 (${esc(dshort(t))}). Later dates show one simulated run where the team takes the plan's decisions on time. It is not the best case: one bet fails and ₹1.5L of reserve stays unspent.</div>`;
 }
 const VERB = { 'Too early': 'v-early', Stopped: 'v-Stop' };
 const vcls = v => VERB[v] || 'v-' + v;
@@ -339,39 +339,59 @@ function assumptionNow(f) {
   return daysToFest() <= 2 ? 'Confirmed people come about 75% of the time; people still unconfirmed on fest eve rarely do (2025: 0 of 29).' : 'About 75% of confirmed people come and about 55% of unconfirmed ones (2025: 73–77% and 54–66%). Late sign-ups follow 2025\'s curve.';
 }
 PAGES.overview = () => {
-  const ds = S.ds, D = S.asOf, A = assump(), k = E.kpis(ds, D, A), f = fcAt(D), g = k.target || {}, b = E.budget(ds, D), l = ly();
+  const ds = S.ds, D = S.asOf, A = assump(), k = E.kpis(ds, D, A), f = fcAt(D), g = k.target || {}, b = E.budget(ds, D), tot = f.total, host = k.hasHost;
+  const pc = E.pace(ds, D)[0], P = host ? k.passRegistered : k.registered, sh = E.shareAt(ds, D), l = ly(), lyEnd = l ? E.kpis(l.ds, l.ds.event.end) : null;
+  const vsPlan = (n, plan) => !ok(plan) || plan <= 0 ? '' : Math.abs(n / plan - 1) < 0.005 ? '<span class="up">on plan</span>' : `<span class="${n >= plan ? 'up' : 'dn'}">${n >= plan ? '▲' : '▼'} ${pct(Math.abs(n / plan - 1))} vs plan</span>`;
+  const range = x => x && x.bad !== undefined && x.bad !== x.good ? `range ${fmt(x.bad)}–${fmt(x.good)}` : '';
+  // title: the verdict on the number we promise (all attendees in 2027; outside attendees in 2025, which has no data on our own students)
+  const main = host && tot ? tot : f, mainLabel = host ? 'all attendees' : 'outside attendees', mainTarget = host ? (tot && tot.target) : g.visitors;
   let title;
-  if (f.mode === 'actual') title = `${pill(f.verdict)} ${fmt(k.visitors)} outside attendees vs the ${fmt(g.visitors)} target`;
-  else if (f.mode === 'too early') title = k.registered ? 'Too early to forecast: too few sign-ups yet' : `Before launch: passes open ${dshort(ds.event.regOpens || ds.event.start)}`;
-  else title = `${pill(f.verdict)} ${f.mode === 'live' ? fmt(k.visitors) + ' outside visitors so far; most likely ' + fmt(f.likely) : 'Most likely ' + fmt(f.likely) + ' outside attendees vs the ' + fmt(g.visitors) + ' target'}`;
-  const tr = todayReleases(D), trLine = tr.length ? ` Includes your release made today (${tr.map(x => lakh(x.amount) + ' to ' + esc(x.bet)).join(', ')}), estimated until it shows in sign-ups.` : '';
-  const card = `<div class="wk"><div><span class="l">What's happening</span>${esc(stageNow())}</div><div><span class="l">What the numbers say</span>${esc(numbersSay(k, f))}${trLine}</div><div><span class="l">The assumption behind it</span>${esc(assumptionNow(f))} <a href="#journey" class="note">Full plan →</a></div></div>`;
-  // scorecard: targets vs actuals vs 2025 at the same point
-  const pc = E.pace(ds, D)[0], P = sim() ? k.passRegistered : k.registered, lk = l ? l.k : null, vsPlan = (n, plan) => !ok(plan) || plan <= 0 ? '' : Math.abs(n / plan - 1) < 0.005 ? '<span class="up">on plan</span>' : `<span class="${n >= plan ? 'up' : 'dn'}">${n >= plan ? '▲' : '▼'} ${pct(Math.abs(n / plan - 1))}</span>`;
-  const conf = k.active ? k.status.confirmed / k.active : null, lyConf = lk && lk.active ? lk.status.confirmed / lk.active : null;
-  const att = f.mode === 'actual' ? fmt(k.visitors) : started() ? fmt(k.visitors) + ' so far' : '–';
-  const heading = f.mode === 'forecast' || f.mode === 'live' ? `<b>${fmt(f.likely)}</b><div class="note">${fmt(f.bad)}–${fmt(f.good)} ${info('Bad luck to good luck: the fest played 1,000 times; only 1 in 10 runs did worse than the low end or better than the high end.', true)}</div>` : f.mode === 'actual' ? pill(f.verdict) : '–';
+  if (f.mode === 'too early') title = k.registered ? 'Too early to forecast: too few sign-ups yet' : `Before launch: passes open ${dshort(ds.event.regOpens || ds.event.start)}`;
+  else if (f.mode === 'actual') title = `${pill(main.verdict)} ${fmt(main.likely)} ${mainLabel} vs the ${fmt(mainTarget)} target`;
+  else title = `${pill(main.verdict)} Most likely ${fmt(main.likely)} ${mainLabel} vs the ${fmt(mainTarget)} target`;
+  // the four numbers that matter
+  const big = (l, v, sub, tip, extra) => `<div class="kpi"><div class="l">${esc(l)}${tip ? info(tip) : ''}</div><div class="v">${v}</div><div class="s">${sub}</div>${extra || ''}</div>`;
+  const done = f.mode === 'actual', est = f.mode === 'forecast' || f.mode === 'live';
+  const boxes = [];
+  if (host) boxes.push(big(done ? 'All attendees' : 'All attendees · heading for', tot && (est || done) ? fmt(tot.likely) : '–', `target ${fmt(tot && tot.target)}${tot && tot.stretch ? ' · stretch ' + fmt(tot.stretch) : ''}${est ? '<br>' + range(tot) : ''}`, 'Everyone who comes: outside people plus our own students (hostel students counted at the concert gate, day scholars at the student-ID lane). This is the number we promise.', tot && tot.verdict ? `<div class="vd">${pill(tot.verdict)}</div>` : ''));
+  boxes.push(big(done ? 'Outside attendees' : 'Outside attendees · heading for', est || done ? fmt(f.likely) : '–', `target ${fmt(g.visitors)}${host ? ' · the part we grow' : ''}${est ? '<br>' + range(f) : ''}`, 'Outside people verified at the gate, counted once. Marketing money moves this number, and it is the one we can compare with 2025.', !host && f.verdict ? `<div class="vd">${pill(f.verdict)}</div>` : ''));
+  boxes.push(big(host ? 'Pass sign-ups' : 'Registrations', fmt(P), pc && pc.curve && pc.base_pace ? `plan by now ${fmt(pc.base_pace)} · ${vsPlan(P, pc.base_pace)}` : `goal ${fmt(g.registered)}`, host ? 'Outside people with a pass, not counting competition teams (they are tracked on their own). Plan = 2025\'s sign-up curve applied to our target.' : 'Outside people with a registration.'));
+  boxes.push(big('Spent', money(k.spend), `of ${lakh(b.approved)} (${pct(b.used)})<br>${ok(k.costPerAttendee) ? inr(k.costPerAttendee) + ' per attendee' + (started() ? '' : ' (est.)') : ''}`, 'Net marketing spend. Cost per attendee = spent ÷ attendees (before the fest: ÷ the attendees expected from people already registered). Our limit for one extra person is ₹250.'));
+  const lyLine = lyEnd ? `<p class="note">Last year: ${fmt(lyEnd.visitors)} outside attendees from ${fmt(lyEnd.identified)} people reached, on ${lakh(lyEnd.spend)}. Our plan is about 3× each.</p>` : '';
+  const groups = groupFlags(E.flags(ds, D, rules(), A)).filter(x => x.level !== 'watch'), top = groups[0];
+  const watch = top ? `<div class="watch"><span class="lvl ${top.level}">${top.level}</span><b>Watch now:</b> ${esc(top.subj)}: ${esc(top.items[0].reason)}. <button class="link" data-act="flagd" data-id="${esc(top.items[0].id)}" type="button">Why?</button>${groups.length > 1 ? ` · <a href="#insights">${groups.length - 1} more on Insights</a>` : ''}</div>` : `<div class="watch ok"><b>Watch now:</b> nothing at Warn or Act.</div>`;
+  // scorecard: targets vs actuals
+  const conf = k.active ? k.status.confirmed / k.active : null;
+  const heading = x => x && (est || done) ? (done ? pill(x.verdict) : `<b>${fmt(x.likely)}</b><div class="note">${range(x)}</div>`) : '–';
+  // reach plan = our reach target × the share of its final reach 2025 had at the same number of days before the fest
+  const reachPlan = g.identified && host && l && lyEnd && !started() ? Math.round(g.identified * l.k.identified / lyEnd.identified) : null;
+  const studentsTarget = tot && tot.target ? tot.target - (g.visitors || 0) : null;
   const rows = [
-    ['People reached', 'Outside people who left their details, counted once.', fmt(k.identified), '–', g.identified ? fmt(g.identified) : '–', '–', lk ? fmt(lk.identified) : null],
-    sim() ? ['Competition teams', 'Teams register first because they need time to prepare. Plan: 150 by week 6, 250 by week 8, 300 by week 10.', `${fmt(k.teams)} <span class="note">(${fmt(k.competitors)} people)</span> ${k.teamPlan ? vsPlan(k.teams, k.teamPlan.by_now) : ''}`, k.teamPlan ? fmt(k.teamPlan.by_now) : '–', k.teamPlan ? fmt(k.teamPlan.goal) : '–', '–', null] : null,
-    [sim() ? 'Pass registrations' : 'Registrations', sim() ? 'Outside people with a pass (competition teams counted separately). Plan = 2025\'s sign-up curve applied to our target.' : 'Outside people with a registration.', `${fmt(P)} ${pc && pc.curve && pc.base_pace ? vsPlan(P, pc.base_pace) : ''}`, pc && pc.curve && pc.base_pace ? fmt(pc.base_pace) : '–', fmt(g.registered) + (g.stretch_registered ? `<div class="note">stretch ${fmt(g.stretch_registered)}</div>` : ''), f.projected_registrations && f.mode === 'forecast' ? fmt(sim() ? f.projected_registrations - k.competitors : f.projected_registrations) : '–', lk ? fmt(lk.registered) : null],
-    ['Confirmed', 'Said "I am coming". Confirmed people come about 75% of the time.', `${fmt(k.status.confirmed)} <span class="note">(${pct(conf)})</span>`, '–', '–', '–', lk ? `${fmt(lk.status.confirmed)} <span class="note">(${pct(lyConf)})</span>` : null],
-    ['Outside attendees', 'Verified at the gate, counted once. This is the outcome we are judged on.', att, '–', fmt(g.visitors) + (g.stretch_visitors ? `<div class="note">stretch ${fmt(g.stretch_visitors)}</div>` : ''), heading, lk ? (started() ? fmt(lk.visitors) : `<span class="note">ended at ${fmt(E.kpis(l.ds, l.ds.event.end).visitors)}</span>`) : null],
-    ['Spent', 'Net marketing spend so far.', money(k.spend), '–', lakh(b.approved), '–', lk ? money(lk.spend) : null],
-    ['Cost per attendee', started() ? 'Spent ÷ attendees so far.' : 'Spent ÷ the attendees expected from people already registered (est.).', ok(k.costPerAttendee) ? inr(k.costPerAttendee) : '–', '–', '₹250 per extra person', '–', lk && ok(lk.costPerAttendee) ? inr(lk.costPerAttendee) : null]
+    ['People reached', 'Outside people who acted: left their details, opened a page or signed up. Counted once. To get the target we need about 8,400 (2025: 57% of people reached came). Plan by now follows 2025\'s reach timing.', `${fmt(k.identified)} ${reachPlan ? vsPlan(k.identified, reachPlan) : ''}`, reachPlan ? fmt(reachPlan) : '–', g.identified ? fmt(g.identified) : '–', '–'],
+    host ? ['Competition teams', 'Teams register first because they need time to prepare. Plan: 150 by week 6, 250 by week 8, 300 by week 10.', `${fmt(k.teams)} <span class="note">(${fmt(k.competitors)} people)</span> ${k.teamPlan ? vsPlan(k.teams, k.teamPlan.by_now) : ''}`, k.teamPlan ? fmt(k.teamPlan.by_now) : '–', k.teamPlan ? fmt(k.teamPlan.goal) : '–', '–'] : null,
+    [host ? 'Pass sign-ups' : 'Registrations', host ? 'Outside people with a pass (competition teams counted separately).' : 'Outside people with a registration.', `${fmt(P)} ${pc && pc.curve && pc.base_pace ? vsPlan(P, pc.base_pace) : ''}`, pc && pc.curve && pc.base_pace ? fmt(pc.base_pace) : '–', fmt(g.registered) + (g.stretch_registered ? `<div class="note">stretch ${fmt(g.stretch_registered)}</div>` : ''), f.mode === 'forecast' && f.projected_registrations ? fmt(host ? f.projected_registrations - k.competitors : f.projected_registrations) : '–'],
+    ['Confirmed', 'Said "I am coming". Confirmed people come about 75% of the time.', `${fmt(k.status.confirmed)} <span class="note">(${pct(conf)} of sign-ups)</span>`, '–', '–', '–'],
+    ['Outside attendees', 'Verified at the gate, counted once.', started() ? fmt(k.visitors) + (done ? '' : ' so far') : '–', '–', fmt(g.visitors) + (g.stretch_visitors ? `<div class="note">stretch ${fmt(g.stretch_visitors)}</div>` : ''), heading(f)],
+    host ? ['Our students', 'Hostel students (4,000; counted at the concert gate) and day scholars (6,000; student-ID lane). No registration step, so this is an estimate until fest day.', started() ? fmt(k.ourStudents) + (done ? '' : ' so far') : '–', '–', studentsTarget ? fmt(studentsTarget) : '–', tot && (est || done) ? (done ? fmt(k.ourStudents) : `<b>${fmt(tot.our_students)}</b>`) : '–'] : null,
+    host ? ['All attendees', 'Outside attendees plus our students: the number we promise.', started() ? fmt(k.allVisitors) + (done ? '' : ' so far') : '–', '–', tot && tot.target ? fmt(tot.target) + (tot.stretch ? `<div class="note">stretch ${fmt(tot.stretch)}</div>` : '') : '–', heading(tot)] : null,
+    ['Spent', 'Net marketing spend so far.', money(k.spend), '–', lakh(b.approved), '–'],
+    ['Cost per attendee', started() ? 'Spent ÷ outside attendees so far.' : 'Spent ÷ the outside attendees expected from people already registered (est.).', ok(k.costPerAttendee) ? inr(k.costPerAttendee) : '–', '–', '₹250 per extra person', '–']
   ].filter(Boolean);
-  const showLy = rows.some(r => r[6] !== null);
-  const score = `<div class="scroll"><table class="score"><tr><th>Measure</th><th class="n">Now</th><th class="n">Plan by now</th><th class="n">Final target</th><th class="n">Heading for</th>${showLy ? `<th class="n">2025 at this point${info('2025 on the same number of days before its fest (' + dshort(l.D) + ').', true)}</th>` : ''}</tr>${rows.map(r => `<tr><td>${esc(r[0])}${info(r[1])}</td><td class="n">${r[2]}</td><td class="n">${r[3]}</td><td class="n">${r[4]}</td><td class="n">${r[5]}</td>${showLy ? `<td class="n">${r[6] === null ? '–' : r[6]}</td>` : ''}</tr>`).join('')}</table></div>`;
+  const score = `<div class="scroll"><table class="score"><tr><th>Measure</th><th class="n">Now</th><th class="n">Plan by now</th><th class="n">Final target</th><th class="n">Heading for${info('The forecast: the fest played 1,000 times. The range runs from bad luck (only 1 in 10 runs did worse) to good luck (only 1 in 10 did better).', true)}</th></tr>${rows.map(r => `<tr class="${r[0] === 'All attendees' ? 'tot' : ''}"><td>${esc(r[0])}${info(r[1])}</td><td class="n">${r[2]}</td><td class="n">${r[3]}</td><td class="n">${r[4]}</td><td class="n">${r[5]}</td></tr>`).join('')}</table></div>`;
   // campaign scorecard
   const end = ended(), cap = A.cost_cap.value, bets = hasBets() ? E.betRows(ds, D, A) : [], camps = E.campaignRows(ds, D, { assumptions: A }).filter(r => r.campaign_id), min = rules().min_people.value;
   const crow = r => { const bt = bets.find(x => x.campaign_id === r.campaign_id), c = bt ? bt.cost_per_extra : end ? r.cost_per_visitor : r.cost_per_expected_visitor, n = bt ? Math.max(0, bt.expected_extra_attendees) : end ? r.visitors : r.expected_visitors, lim = r.cost_cap_inr || cap, [v] = verdict(r, end, k.showup, cap, min, bets), early = v === 'Too early', over = !early && ok(c) && c > lim;
-    return `<tr class="click" data-act="${bt ? 'bet' : 'camp'}" data-id="${esc(r.campaign_id)}" tabindex="0"><td>${esc(r.campaign)}${bt ? ' <span class="note">bet</span>' : ''}</td><td class="n">${money(r.spend)}${r.planned_budget_inr ? `<span class="note"> / ${money(r.planned_budget_inr)}</span>` : ''}</td><td class="n">${fmt(n)}${bt ? '<span class="note"> extra</span>' : ''}</td><td class="n ${over ? 'over' : ''}">${early || !r.spend || !ok(c) ? '–' : inr(c)}<span class="note"> / ${inr(lim)}</span></td><td><span class="${vcls(v)}">${esc(v)}</span></td></tr>`; };
-  const cscore = `<div class="scroll"><table class="score"><tr><th>Campaign</th><th class="n">${hasBets() ? 'Spent / planned' : 'Spent'}</th><th class="n">${end ? 'Attendees' : 'Expected attendees'}${info('For bets: extra attendees beyond what similar colleges without the bet show.', true)}</th><th class="n">Cost each / limit</th><th>Verdict</th></tr>${camps.map(crow).join('')}</table></div>`;
-  const groups = groupFlags(E.flags(ds, D, rules(), A)).filter(x => x.level !== 'watch'), top = groups.slice(0, 3), more = groups.length - top.length;
-  return `${head(title, '')}${card}
+    return `<tr class="click" data-act="${bt ? 'bet' : 'camp'}" data-id="${esc(r.campaign_id)}" tabindex="0"><td>${esc(r.campaign)}${bt ? ` <span class="note">bet${r.audience === 'our students' ? ', our students' : ''}</span>` : ''}</td><td class="n">${money(r.spend)}${r.planned_budget_inr ? `<span class="note"> / ${money(r.planned_budget_inr)}</span>` : ''}</td><td class="n">${fmt(n)}${bt ? '<span class="note"> extra</span>' : ''}</td><td class="n ${over ? 'over' : ''}">${early || !r.spend || !ok(c) ? '–' : inr(c)}<span class="note"> / ${inr(lim)}</span></td><td><span class="${vcls(v)}">${esc(v)}</span></td></tr>`; };
+  const cscore = `<div class="scroll"><table class="score"><tr><th>Campaign</th><th class="n">${hasBets() ? 'Spent / planned' : 'Spent'}</th><th class="n">${end ? 'Attendees' : 'Will come (from today\'s sign-ups)'}${info('For bets: extra attendees beyond what similar colleges without the bet show.', true)}</th><th class="n">Cost each / limit</th><th>Verdict</th></tr>${camps.map(crow).join('')}</table></div>`;
+  const tr = todayReleases(D), trLine = tr.length ? ` Includes your release made today (${tr.map(x => lakh(x.amount) + ' to ' + esc(x.bet)).join(', ')}), estimated until it shows in sign-ups.` : '';
+  const card = `<div class="wk"><div><span class="l">What's happening</span>${esc(stageNow())}</div><div><span class="l">What the numbers say</span>${esc(numbersSay(k, f))}${trLine}</div><div><span class="l">The assumption behind it</span>${esc(assumptionNow(f))} <a href="#journey" class="note">Full plan →</a></div></div>`;
+  return `${head(title, '')}
+  <div class="kpis">${boxes.join('')}</div>
+  <p class="note brief">These follow the brief: projected outcome, targets vs actuals, budget and cost per attendee. The scorecard has the full funnel and conversion rates.</p>${lyLine}
+  ${watch}
   <h2 class="sec">Scorecard</h2>${score}
-  <h2 class="sec" style="margin-top:22px">Needs attention${more > 0 ? ` <a href="#insights" class="note">${more} more on Insights →</a>` : ''}</h2>${top.length ? `<div class="att">${top.map(x => `<div class="card">${groupRow(x)}</div>`).join('')}</div>` : '<p class="empty">Nothing at Warn or Act.</p>'}
-  <h2 class="sec" style="margin-top:22px">Campaigns</h2>${cscore}`;
+  <h2 class="sec" style="margin-top:22px">Campaigns</h2>${cscore}
+  <h2 class="sec" style="margin-top:22px">This week</h2>${card}`;
 };
 PAGES.journey = () => {
   const ds = S.ds, D = S.asOf, w = E.weekOf(ds, D);
@@ -380,15 +400,14 @@ PAGES.journey = () => {
   ${stages}
   <div class="two" style="margin-top:22px"><div class="card"><h2>How the forecast changed, week by week ${info('Each dot is the most likely number forecast on that date; the shaded band runs from bad luck to good luck. It narrows as real numbers replace guesses. Only dates up to the one you are viewing are shown.')}</h2><div class="fig"><svg id="fcChart" role="img" aria-label="Forecast by week"></svg></div>
     <div class="legend"><span><i style="border-color:#111418;border-top-width:3px"></i>Most likely</span><span><i class="sw" style="background:#2f6fed"></i>Bad to good luck</span><span><i style="border-color:#c8281e;border-top-style:dashed"></i>Target</span></div></div>
-  <div class="card"><h2>What we are doing about it</h2>${doingList()}</div></div>`;
+  <div class="card"><h2>Decided so far</h2>${doingList()}</div></div>`;
 };
 function doingList() {
   const D = S.asOf, b = baseOf();
-  const plan = sim() ? E.planDecisionsAt(S.ds, D).slice(-3).reverse().map(p => `<li><span class="note">${esc(dshort(p.decided_at))}</span> ${esc(p.title)} <span class="label">plan</span></li>`) : [];
-  const mine = S.decisions.filter(d => (d.base || '25') === b && d.as_of <= D).sort((x, y) => (y.created_at || '').localeCompare(x.created_at || '')).slice(0, 3).map(d => `<li><span class="note">${esc(dshort(d.as_of))}</span> ${esc(d.title)}</li>`);
-  const tasks = S.tasks.filter(t => (t.base || '25') === b && tStatus(t) !== 'done').sort((x, y) => (x.due || '').localeCompare(y.due || '')).slice(0, 4).map(t => `<li>${esc(t.title)} <span class="note">· ${esc(ownerLabel(t.owner))}, due ${esc(dshort(t.due))}${t.due < D ? ' · <span style="color:var(--act)">late</span>' : ''}</span></li>`);
-  if (!plan.length && !mine.length && !tasks.length) return '<p class="empty">No actions yet. Use "Act on this" on anything that needs attention.</p>';
-  return `${mine.length || plan.length ? `<h3>Decided</h3><ul class="plain">${mine.concat(plan).join('')}</ul>` : ''}${tasks.length ? `<h3>Open tasks</h3><ul class="plain">${tasks.join('')}</ul>` : ''}<p class="note"><a href="#tasks">All tasks and decisions →</a></p>`;
+  const plan = sim() ? E.planDecisionsAt(S.ds, D).slice().reverse().map(p => ({ d: p.decided_at, t: p.title, src: 'plan' })) : [];
+  const mine = S.decisions.filter(d => (d.base || '25') === b && d.as_of <= D).map(d => ({ d: d.as_of, t: d.title, src: 'you' }));
+  const all = mine.concat(plan).sort((x, y) => y.d.localeCompare(x.d));
+  return all.length ? `<ul class="plain">${all.map(x => `<li><span class="note">${esc(dshort(x.d))}</span> ${esc(x.t)} <span class="label">${x.src}</span></li>`).join('')}</ul><p class="note"><a href="#tasks">Tasks and the decision log →</a></p>` : '<p class="empty">Nothing decided yet on this date. The first money decisions come at the week 10 review.</p>';
 }
 function fcPoints() {
   const ds = S.ds, cp = E.checkpoints(ds), D = S.asOf;
@@ -416,21 +435,8 @@ PAGES.funnel = () => {
   <div class="scroll" style="margin-top:16px"><table><tr><th>Step</th><th class="n">People</th><th class="n">% of step before${info('Share of the people in the step above who reached this step.', true)}</th><th class="n">Cost each${info('Spend so far ÷ people at this step. It shows what each reached person, registration, confirmation and attendee costs.', true)}</th><th class="n">Target</th>${l ? `<th class="n">2025, same point${info('2025 at the same number of days before its fest.', true)}</th>` : ''}</tr>
   ${f.steps.map(s => `<tr><td>${esc(s.label)}${s.expected ? ' <span class="tag">est.</span>' : ''}</td><td class="n">${fmt(s.n)}</td><td class="n">${pct(s.from_prev)}</td><td class="n">${inr(s.cost_each)}</td><td class="n">${s.target ? fmt(s.target) + (s.pace ? `<div class="note">${fmt(s.pace)} by now</div>` : '') : '–'}</td>${l ? `<td class="n">${fmt(lyStep(s.key))}</td>` : ''}</tr>`).join('')}</table></div>
   ${!cid && f.walkins ? `<p class="note">Plus ${fmt(f.walkins)} people who came without registering: ${fmt(f.total_attended)} outside attendees in all.</p>` : ''}
-  ${!cid && peak ? `<div class="card" style="margin-top:16px"><h2>Can the gates take it? ${info(started() ? 'Verified entries in the busiest hour so far.' : 'Expected attendees × 1.59 entries each ÷ 2 days × 24.5% in the busiest hour, the 2025 pattern.')}</h2><div class="cap"><i style="width:${Math.min(100, peak / cap * 100).toFixed(1)}%" class="${peak >= 0.8 * cap ? 'hot' : ''}"></i></div><p class="note">${started() ? 'Busiest hour' : 'Expected busiest hour'}: ${fmt(peak)} entries vs a safe ${fmt(cap)} per hour (${pct(peak / cap)}).</p></div>` : ''}
-  ${!cid ? `<div class="card" style="margin-top:16px"><h2>${ds.paceCurve.length ? 'Registrations vs the plan' : 'Registrations vs the goal'}</h2><div class="fig" style="min-height:240px"><svg id="pathChart" role="img" aria-label="Registrations against plan"></svg></div>
-  <div class="legend">${ds.paceCurve.length ? '<span><i style="border-color:#111418;border-top-width:3px"></i>Actual</span><span><i style="border-color:#111418;border-top-style:dashed"></i>Base plan</span><span><i style="border-color:#2f6fed;border-top-style:dashed"></i>Stretch plan</span>' : '<span><i style="border-color:#111418;border-top-width:3px"></i>Registered</span><span><i style="border-color:#111418;border-top-style:dashed"></i>Goal</span>'}</div></div>` : ''}
   <p class="note" style="margin-top:12px">Before people leave their details (ads and links, counted as events, not people): ${fmt(a.impressions)} views → ${fmt(a.clicks)} clicks (${pct(a.ctr, 1)}) → ${fmt(a.sessions)} page visits → ${fmt(a.form_starts)} form starts.</p>`;
 };
-function drawPath() {
-  const ds = S.ds, ev = ds.event, D = S.asOf, curve = ds.paceCurve.length;
-  const endDay = E.addDays(ev.eventStartDay, -1), from = curve && ev.regOpens ? E.addDays(ev.regOpens, -7) : ev.start, days = []; for (let d = from; d <= endDay; d = E.addDays(d, 1)) days.push(d);
-  const cum = E.trend(ds, 'registrations', 'day', ev.start, endDay).rows.slice(E.daysBetween(ev.start, from)).map(r => r.cumulative);
-  const cut = D > endDay ? days.length - 1 : D < from ? -1 : days.indexOf(D), upto = arr => arr.map((v, i) => i <= cut ? v : null);
-  let series;
-  if (curve) { const t = E.targetAt(ds, D) || {}; const sh = days.map(d => E.shareAt(ds, d)); series = [{ values: sh.map(x => x * t.stretch_registration_goal), color: '#2f6fed', dash: '5 4', w: 1.5 }, { values: sh.map(x => x * t.registration_goal), color: '#111418', dash: '5 4', w: 1.5 }, { values: upto(cum), color: '#111418', w: 3 }]; }
-  else { const gr = days.map(d => (E.targetAt(ds, d) || {}).registration_goal || null); series = [{ values: gr, color: '#111418', dash: '5 4', w: 1.5 }, { values: upto(cum), color: '#111418', w: 3 }]; }
-  mount('pathChart', s => lineChart(s, { x: days, series, marker: cut >= 0 && D <= endDay ? cut : null, markerLabel: D === ev.today ? 'today' : dshort(D) }));
-}
 
 PAGES.campaigns = () => {
   const ds = S.ds, D = S.asOf, A = assump(), end = ended(), k = E.kpis(ds, D, A), cap = A.cost_cap.value, min = rules().min_people.value, bets = E.betRows(ds, D, A);
@@ -443,7 +449,7 @@ PAGES.campaigns = () => {
     <td class="n">${r.spend && ok(cost) ? inr(cost) : '–'}${b ? '<div class="note">per extra</div>' : ''}</td><td><span class="${vcls(v)}">${esc(v)}</span><div class="note">${esc(why)}</div></td></tr>`; };
   return `${head('Campaigns', `${end ? 'Channels are judged on cost per attendee' : 'Channels are judged on cost per expected attendee'} against a ${inr(cap)} limit. Click a row to edit it.`)}
   <div class="row" style="margin-bottom:12px"><button class="btn" data-act="newcamp" type="button">Add campaign</button><button class="btn ghost" data-act="spend" type="button">Record spend</button></div>
-  <div class="scroll"><table><tr><th>Campaign</th><th class="n">Spent</th><th class="n">Registered</th><th class="n">Confirmed${info('Said "I am coming".', true)}</th><th class="n">${end ? 'Came' : 'Expected to come'}${info(end ? 'Verified at the gate.' : 'Estimate: confirmed × 75% + unconfirmed × 55% (5% on fest eve) + waitlisted × 20%, from 2025 show-up.', true)}</th><th class="n">${end ? 'Cost per attendee' : 'Cost per attendee (est.)'}${info('Spent ÷ attendees. For bets it is spend ÷ extra attendees (beyond what the comparison group shows).', true)}</th><th>Verdict</th></tr>
+  <div class="scroll"><table><tr><th>Campaign</th><th class="n">Spent</th><th class="n">Registered</th><th class="n">Confirmed${info('Said "I am coming".', true)}</th><th class="n">${end ? 'Came' : 'Will come (from today\'s sign-ups)'}${info(end ? 'Verified at the gate.' : 'Estimate: confirmed × 75% + unconfirmed × 55% (5% on fest eve) + waitlisted × 20%, from 2025 show-up.', true)}</th><th class="n">${end ? 'Cost per attendee' : 'Cost per attendee (est.)'}${info('Spent ÷ attendees. For bets it is spend ÷ extra attendees (beyond what the comparison group shows).', true)}</th><th>Verdict</th></tr>
   ${groups.map(([name, list]) => (name ? `<tr><td colspan="7" class="note" style="background:#fff;font-weight:600;padding-top:14px">${esc(name)}</td></tr>` : '') + list.map(tr).join('')).join('')}</table></div>
   <p class="note" style="margin-top:10px">A campaign's credit links a person to it; it does not prove the campaign caused the visit. Bets prove cause with a comparison group.</p>`;
 };
@@ -467,12 +473,12 @@ PAGES.bets = () => {
 function betDrawer(id) {
   const b = E.betRows(S.ds, S.asOf, assump()).find(x => x.campaign_id === id); if (!b) return '';
   const c = S.ds.camps.get(id) || {};
-  return `<p>${esc(b.test_design)}</p>${c.budget_breakdown ? `<div class="card" style="background:var(--soft);border:0;margin-bottom:12px"><b>Where the money goes</b><p style="margin:4px 0 0">${esc(c.budget_breakdown)}</p></div>` : ''}<table><tr><td>Live for</td><td class="n">${b.weeks_live} weeks</td></tr><tr><td>Spent / planned</td><td class="n">${inr(b.spend)} / ${inr(b.planned_budget_inr)}</td></tr>${b.reserve_released_inr ? `<tr><td>Reserve released</td><td class="n">${inr(b.reserve_released_inr)}</td></tr>` : ''}
+  const plan = c.plan_idea ? `<dl class="qa plan"><dt>The idea</dt><dd>${esc(c.plan_idea)}</dd><dt>Why it should work</dt><dd>${esc(c.plan_why)}</dd><dt>How we test it</dt><dd>${esc(c.plan_test)}</dd><dt>Money</dt><dd>${inr(b.planned_budget_inr - (b.reserve_released_inr || 0))} planned${b.reserve_released_inr ? ' + ' + inr(b.reserve_released_inr) + ' reserve' : ''}. ${esc(c.budget_breakdown || '')}</dd><dt>Stop rule</dt><dd>${esc(c.stop_rule)}</dd></dl>` : `<p>${esc(b.test_design)}</p>`;
+  return `${plan}<h3 style="margin-top:14px">How it is doing on ${esc(dshort(S.asOf))}</h3><p style="margin-top:4px"><span class="${vcls(b.decision)}">${esc(b.decision)}</span>: ${esc(b.why)}.</p><table><tr><td>Live for</td><td class="n">${b.weeks_live} weeks</td></tr><tr><td>Spent / planned</td><td class="n">${inr(b.spend)} / ${inr(b.planned_budget_inr)}</td></tr>${b.reserve_released_inr ? `<tr><td>Reserve released</td><td class="n">${inr(b.reserve_released_inr)}</td></tr>` : ''}
   <tr><td>Test group</td><td class="n">${fmt(b.test_registered)} of ${fmt(b.test_people)}${b.test_rate !== null ? ' (' + pct(b.test_rate, 1) + ')' : ''}</td></tr>${b.comparison_people !== null ? `<tr><td>Comparison group</td><td class="n">${fmt(b.comparison_registered)} of ${fmt(b.comparison_people)} (${pct(b.comparison_rate, 1)})</td></tr><tr><td>Gap</td><td class="n">${pct(b.lift, 1)} · ${esc(b.gap_real)}</td></tr>` : ''}
   <tr><td>Extra registrations</td><td class="n">${fmt(b.extra_registrations)}</td></tr><tr><td>Chance each registrant comes (est.)</td><td class="n">${ok(b.attendees_per_registrant) ? pct(b.attendees_per_registrant) : '–'}</td></tr><tr><td>Extra attendees (est.)</td><td class="n">${fmt(b.expected_extra_attendees)}${b.expected_extra_low !== null ? ' (' + fmt(b.expected_extra_low) + '–' + fmt(b.expected_extra_high) + ')' : ''}</td></tr>
   <tr><td>Cost per extra attendee</td><td class="n">${inr(b.cost_per_extra)}</td></tr><tr><td>Next extra attendee (÷ ${b.scale_factor} for shrinking returns)</td><td class="n">${inr(b.next_tranche_cost)}</td></tr><tr><td>Limit</td><td class="n">${inr(b.cost_cap_inr)}</td></tr></table>
-  <p style="margin-top:12px"><span class="${vcls(b.decision)}">${esc(b.decision)}</span>: ${esc(b.why)}.</p>
-  <div class="row"><button class="btn" data-act="draft" data-kind="task" data-camp="${esc(id)}" type="button">Create a task</button><button class="btn ghost" data-act="ask" data-q="${esc('Explain the ' + b.bet + ' bet: is it working and what should we do with it?')}" type="button">Ask the analyst</button></div>`;
+  <div class="row" style="margin-top:12px"><button class="btn" data-act="draft" data-kind="task" data-camp="${esc(id)}" type="button">Create a task</button><button class="btn ghost" data-act="ask" data-q="${esc('Explain the ' + b.bet + ' bet: is it working and what should we do with it?')}" type="button">Ask the analyst</button></div>`;
 }
 
 PAGES.insights = () => {
@@ -482,7 +488,7 @@ PAGES.insights = () => {
     .concat(rows.filter(r => { const c = end ? r.cost_per_visitor : r.cost_per_expected_visitor; return ok(c) && c <= cap && (end ? r.visitors : r.expected_visitors) >= 30; }).map(r => { const c = end ? r.cost_per_visitor : r.cost_per_expected_visitor; return { n: r.campaign, r: `${inr(c)} per ${end ? '' : 'expected '}attendee, under the ${inr(cap)} limit`, why: `${fmt(r.registered)} registered, ${fmt(end ? r.visitors : r.expected_visitors)} ${end ? 'came' : 'expected'}. Credit is a link, not proof of cause.` }; }));
   const notw = g.filter(x => x.level !== 'watch'), early = g.filter(x => x.level === 'watch');
   const item = x => `<div class="flag"><div class="t"><span class="lvl ${x.level}">${x.level}</span>${esc(x.subj)}</div>${x.items.map(f => `<div class="e">${esc(f.reason)}</div>`).join('')}${actButtons(x.items[0], true)}</div>`;
-  return `${head('Insights', 'What is working, what is not, and why. <b>Act</b> = decide now · <b>Warn</b> = owner fixes it this week · <b>Watch</b> = keep an eye on it. Groups under 30 people are not judged.')}
+  return `${head('Insights', 'What is working, what is not, and why. <b>Act</b> = decide now · <b>Warn</b> = owner fixes it this week · <b>Watch</b> = keep an eye on it. Groups under 30 people are not judged.')}<p class="note" style="margin:-8px 0 14px">${sim() ? 'The rules (limits and thresholds) are ours, from the plan. The 2027 data is simulated: a few problems were built in so the week 10 review has decisions to make (Paid Social, Volunteers, Day Scholars); the rest come out of the simulation.' : 'The rules (limits and thresholds) are ours; every flag here comes from the real 2025 data.'}</p>
   <div class="three"><div class="card"><h2 class="good">Working</h2>${work.length ? work.map(w => `<div class="flag"><div class="t">${esc(w.n)}</div><div class="e">${esc(w.r)}</div><div class="e">${esc(w.why)}</div></div>`).join('') : '<p class="empty">Nothing proven yet.</p>'}</div>
   <div class="card"><h2 class="bad">Not working</h2>${notw.length ? notw.map(item).join('') : '<p class="empty">Nothing at Warn or Act.</p>'}</div>
   <div class="card"><h2>Watch / too early</h2>${early.length ? early.map(item).join('') : '<p class="empty">Nothing to watch.</p>'}</div></div>`;
@@ -565,7 +571,7 @@ PAGES.data = () => {
   return `${head('Data', 'What you are looking at, where the numbers come from, and how to change them.')}
   <div class="card" style="margin-bottom:14px"><h2>Two datasets</h2>
   <p><b>2027 plan (simulated)</b>: our plan for CampusFest 2027 in New Delhi. Week 1 starts 16 Nov 2026; competition registrations open in week 2 and passes in week 3 (30 Nov, 82 days out, like 2025); week 8 (4 Jan) is the big push; the fest is Fri–Sat 26–27 Feb 2027 (week 15). Campaigns, bets, owners, budgets, limits and targets come from the plan. People, registrations, spend and check-ins are generated to test it; they are not real.</p>
-  <p><b>"Today" is the end of week 10</b> (24 Jan), the first money review: we stop there on purpose to show the decision with only the data known then. Dates after it are a rehearsal: one realistic run where the team takes the plan's decisions on time. It is not the best case: one bet fails, scaled bets do worse than their tests, and ₹2.5L of reserve stays unspent.</p>
+  <p><b>"Today" is the end of week 10</b> (24 Jan), the first money review: we stop there on purpose to show the decision with only the data known then. Dates after it are a rehearsal: one realistic run where the team takes the plan's decisions on time. It is not the best case: one bet fails, scaled bets do worse than their tests, and ₹1.5L of reserve stays unspent.</p>
   <p><b>2025 actual</b>: the provided dataset, locked. Your changes are saved as edits on top of it; the button next to the dataset switches between the original and your edits.</p>
   ${q.validation.errors.length ? `<p style="color:var(--act)">Problems: ${esc(q.validation.errors.join('; '))}</p>` : ''}</div>
   <details open><summary>Assumptions behind every estimate</summary><div class="scroll"><table><tr><th>Assumption</th><th class="n">Used</th><th class="n">Range in the forecast</th><th>Why we believe it</th></tr>${['showup_confirmed', 'showup_interested', 'showup_interested_late', 'showup_waitlisted', 'walkin_share', 'future_regs', 'release_yield', 'scale_factor'].map(k => { const a = A[k], p = k === 'future_regs' || k === 'scale_factor' || k === 'release_yield' ? v => '×' + v : v => pct(v); return `<tr><td>${esc(a.label)}</td><td class="n">${esc(p(a.value))}</td><td class="n">${esc(p(a.low))}–${esc(p(a.high))}</td><td class="note">${esc(a.evidence)}</td></tr>`; }).join('')}</table></div>
@@ -608,15 +614,15 @@ const EXPLAIN = {
   overview: () => { const D = S.asOf, f = fcAt(D), k = E.kpis(S.ds, D, assump()), l = ly(), g = groupFlags(E.flags(S.ds, D, rules(), assump())).filter(x => x.level !== 'watch'); return [
     ['Are we on track for the target?', f.mode === 'actual' ? `The fest is over: ${fmt(k.visitors)} outside attendees vs a ${fmt(f.target)} target (${f.verdict}).` : f.likely ? `${f.verdict}. Most likely ${fmt(f.likely)} outside attendees vs a ${fmt(f.target)} target; with bad luck ${fmt(f.bad)}, with good luck ${fmt(f.good)}. Safe means even bad luck beats the target.` : 'Too early: too few sign-ups yet, so any forecast would be a guess.'],
     ['Are we doing better than last year?', l ? `At the same point in 2025 (${dshort(l.D)}): ${fmt(l.k.registered)} registered and ${lakh(l.k.spend)} spent. Now: ${fmt(k.registered)} registered (${fmt(k.competitors)} of them in competition teams), ${lakh(k.spend)} spent. 2025 ended with ${fmt(E.kpis(l.ds, l.ds.event.end).visitors)} outside attendees.` : sim() ? 'Last year\'s data is still loading.' : 'This is the 2025 data itself; switch to the 2027 plan to compare against it.'],
-    ['Which numbers matter, and why these?', 'The brief asks us to measure the funnel, targets vs actuals, conversion, budget and the projected outcome. The scorecard is exactly that, one row per step from reached to attended, plus money. Campaigns show which ones earn their money.'],
-    ['What is going wrong right now?', g.length ? g.slice(0, 3).map(x => x.subj + ': ' + x.items[0].reason).join('. ') + '.' : 'Nothing at Warn or Act on this date.'],
+    ['Which numbers matter, and why these?', 'The brief asks us to measure the funnel, targets vs actuals, conversion, budget and the projected outcome. The four boxes are the headline; the scorecard is the full funnel from reached to attended, plus our own students and money. Campaigns show which ones earn their money.'],
+    ['Why two attendee numbers?', 'All attendees (outside people plus our own students) is the number we promise: 12,300. Outside attendees (4,800) is the part marketing grows and the only part 2025\'s data lets us compare. Our own students mostly come anyway, so outside growth is the proof the strategy works.'],
     ['How is "Heading for" worked out, and why trust it?', 'We play the fest 1,000 times, each time drawing every uncertain input from its range: show-up by status (2025: 73–77% of confirmed people came), sign-ups still to come (2025\'s curve), walk-ins (6% in 2025). It is a weather forecast, not a promise: the inputs are on the Data page, and the band narrows as real numbers replace guesses.']]; },
   journey: () => [
     ['Why does the plan stop at week 10?', sim() ? 'Week 10 is "today" in our story and the first money review: about half of all sign-ups are in and the bets have run for weeks, so they can be judged fairly. We stop there to show the decision with only what was known that day. Later dates are a labelled rehearsal.' : 'This is 2025: the review point marks the same distance before the fest as our 2027 week 10 review.'],
     ['Why open registrations so early?', sim() ? 'Competition teams need weeks to prepare, so they open in week 2. Passes open in week 3, 82 days out, the same as 2025, so we can use 2025\'s real sign-up curve as our plan. Week 8 is the big marketing push, not the opening.' : '2025 opened registrations 82 days before its fest.'],
     ['What happens at each checkpoint?', 'Week 10 review: stop what failed, release reserve to bets that pass the money rule. Fest eve: check the forecast, confirmations, gates and waitlist. Result: compare what came with what we forecast earlier.'],
     ['What has been decided so far?', (() => { const p = sim() ? E.planDecisionsAt(S.ds, S.asOf) : []; return p.length ? p.map(x => dshort(x.decided_at) + ': ' + x.title).join('; ') + '.' : 'Nothing yet on this date.'; })()],
-    ['Is the rehearsal a happy ending?', sim() ? 'No. One bet (Day Scholar Turnout) fails and is stopped, scaled bets do worse than their tests, and no bet passes the money rule at weeks 12 and 14, so ₹2.5L of reserve is never spent.' : '–']],
+    ['Is the rehearsal a happy ending?', sim() ? 'No. One bet (Day Scholar Turnout) fails and is stopped, scaled bets do worse than their tests, and at week 14 no bet passes the money rule, so ₹1.5L of reserve is never spent.' : '–']],
   funnel: () => { const f = E.funnelView(S.ds, S.asOf, assump()), dr = f.steps.find(s => s.key === f.biggest_drop), at = f.steps[3]; return [
     ['Where do we lose the most people?', dr ? `${dr.label}: only ${pct(dr.from_prev)} of the step before make it. ${dr.key === 'registered' ? 'Most people we reach never sign up; that is normal for a fest, so the work is on who we reach and how easy sign-up is.' : dr.key === 'confirmed' ? 'Sign-ups who have not confirmed come far less often, so confirm-your-spot reminders matter.' : 'Confirmed people still miss the fest; reminders, group passes and entry windows help.'}` : 'Not enough data yet.'],
     ['Why count people, not clicks?', 'Clicks and views are events: one person can make many. Attendance is people, so every step counts each person once. Ad numbers are shown separately at the bottom.'],
@@ -646,7 +652,7 @@ const EXPLAIN = {
     ['What does each rupee bring back?', 'The "Money in, people out" chart: spend on the left, attendees on the right, cost per attendee at the end in red if above its limit.'],
     ['Why keep a reserve?', 'We don\'t know in advance which ideas will work. Holding ₹4.5L back lets money follow proof instead of hope. Ambassadors get perks, not cash, which is how the reserve grew from ₹3.5L.'],
     ['When is reserve released?', 'Only at the reviews (weeks 10, 12, 14), only to a bet whose next extra attendee is under its limit, cheapest first. ₹1L needs a High gap; ₹50k a Medium one; one release per bet until its next review.'],
-    ['What if nothing qualifies?', 'Then the money stays put. In the rehearsal, no bet qualified at weeks 12 and 14, so ₹2.5L was never spent.']]; },
+    ['What if nothing qualifies?', 'Then the money stays put. In the rehearsal, no bet qualified at week 14, so ₹1.5L was never spent.']]; },
   tasks: () => [
     ['Who is doing what?', 'Each task has one owner and a due date. Edit any cell; it saves at once.'],
     ['What is late?', (() => { const n = S.tasks.filter(t => (t.base || '25') === baseOf() && tStatus(t) !== 'done' && t.due && t.due < S.asOf).length; return n ? n + ' task' + (n > 1 ? 's are' : ' is') + ' past due on this date (marked late).' : 'Nothing is late on this date.'; })()],
@@ -715,7 +721,7 @@ function renderDrawer() {
 }
 function campDrawer(c) {
   const A = assump(), r = E.campaignRows(S.ds, S.asOf, { assumptions: A }).find(x => x.campaign_id === c.campaign_id) || {};
-  return `<p class="note">${esc(c.objective || c.target_audience || '')}</p><h3>Registrations per week</h3><div class="fig" style="min-height:170px"><svg id="campChart" role="img" aria-label="Weekly registrations"></svg></div>
+  return `${c.plan_idea ? `<dl class="qa plan"><dt>The idea</dt><dd>${esc(c.plan_idea)}</dd><dt>Why it should work</dt><dd>${esc(c.plan_why)}</dd><dt>Stop rule</dt><dd>${esc(c.stop_rule)}</dd></dl>` : `<p class="note">${esc(c.objective || c.target_audience || '')}</p>`}<h3>Registrations per week</h3><div class="fig" style="min-height:170px"><svg id="campChart" role="img" aria-label="Weekly registrations"></svg></div>
   <p class="note">${fmt(r.registered)} registered · ${fmt(r.confirmed)} confirmed · ${fmt(r.cancelled)} cancelled · opt-outs ${pct(r.opt_out_rate, 1)}</p>
   <form class="f" data-form="campedit" data-id="${esc(c.campaign_id)}" style="margin-top:14px"><h3>Edit</h3><div class="fr"><label class="l">Status<select name="status">${['active', 'paused', 'ended'].map(s => `<option ${((c.status || 'active') === s) ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="l">Owner<select name="owner">${ownerOptions(c.owner_id)}</select></label><label class="l">Planned budget (₹)<input type="number" name="budget" min="0" step="500" value="${esc(c.planned_budget_inr || '')}"></label></div><label class="l">Why<input name="note" placeholder="Kept in the edit history"></label><button class="btn" type="submit">Save</button></form>
   <div class="row" style="margin-top:14px"><button class="btn ghost" data-act="spend" data-id="${esc(c.campaign_id)}" type="button">Record spend</button><button class="btn ghost" data-act="draft" data-kind="task" data-camp="${esc(c.campaign_id)}" type="button">Create a task</button><button class="btn ghost" data-act="ask" data-q="${esc('How is ' + c.campaign_name + ' doing and what should we change?')}" type="button">Ask the analyst</button></div>`;
@@ -817,7 +823,6 @@ function renderNow() {
   if (!S.ds) return; observers.forEach(o => o.disconnect()); observers = []; syncBar();
   try { $('#main').innerHTML = PAGES[S.page](); } catch (e) { console.error(e); $('#main').innerHTML = `<div class="loading">This view hit an error: ${esc(e.message)}</div>`; }
   if (S.page === 'journey') drawJourney();
-  if (S.page === 'funnel' && S.funnelCamp === 'all') drawPath();
   if (S.drawer && (S.drawer.kind === 'explain' || S.drawer.kind === 'flagd')) renderDrawer();
 }
 async function switchView(v, keepDate) {
@@ -827,7 +832,17 @@ async function switchView(v, keepDate) {
   if (chat.sample && !chat.turns.length) emptyState();
 }
 function goDate(d) { if (!isDate(d)) return; const ev = S.ds.event; S.asOf = d < ev.start ? ev.start : d > ev.end ? ev.end : d; S.review = null; syncBar(); render(); }
+function tips() {
+  let box = null;
+  const show = el => { if (!box) { box = document.createElement('div'); box.id = 'tipbox'; box.setAttribute('role', 'tooltip'); document.body.appendChild(box); } box.textContent = el.dataset.tip; box.style.display = 'block'; const r = el.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight; let x = Math.min(window.innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2)), y = r.bottom + 8; if (y + h > window.innerHeight - 8) y = r.top - h - 8; box.style.left = x + 'px'; box.style.top = y + 'px'; };
+  const hide = () => { if (box) box.style.display = 'none'; };
+  document.addEventListener('mouseover', e => { const el = e.target.closest('.i'); if (el) show(el); });
+  document.addEventListener('mouseout', e => { if (e.target.closest('.i')) hide(); });
+  document.addEventListener('focusin', e => { const el = e.target.closest('.i'); if (el) show(el); else hide(); });
+  document.addEventListener('scroll', hide, true);
+}
 function bind() {
+  tips();
   window.addEventListener('hashchange', setPage);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (S.drawer) closeDrawer(); else $('#chat').classList.remove('open'); } });
   $('#asOf').addEventListener('change', e => goDate(e.target.value));

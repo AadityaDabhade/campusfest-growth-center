@@ -131,14 +131,18 @@ table.stages tr.on td{background:#eef3fe}
 .tl .mk.lo{top:44px;height:30px}
 .att{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))}.att .card{padding:4px 16px}.att .flag{border:0}
 table.score td:last-child span[class^=v-]{white-space:nowrap}
+.kpi .vd{margin-top:6px}.kpi .s{line-height:1.45}
+p.brief{margin:-12px 0 4px}
+.watch{border:1px solid #f3d6a8;background:#fffaf2;border-radius:9px;padding:9px 13px;font-size:14px;margin:12px 0 22px}.watch.ok{border-color:#bfe3cd;background:#f3fbf6}.watch .lvl{margin-right:8px}
+table.score tr.tot td{font-weight:700;background:#fafbfc}
+dl.plan dt{margin-top:10px}dl.plan{margin-top:0}
 .moneyline{background:var(--soft);border-radius:8px;padding:9px 13px;font-size:13.5px}
 .ph{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
 .ph>div{flex:1 1 420px}
 .link{background:none;border:0;padding:4px 0;color:#2f6fed;font-weight:600;font-size:13.5px;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
 .banner{background:#fff8ec;border:1px solid #f0d9b5;color:#5c3b00;border-radius:9px;padding:9px 13px;font-size:13.5px;margin:0 0 16px}
 .i{display:inline-grid;place-items:center;width:15px;height:15px;border:1px solid #c9ced4;border-radius:50%;font:700 10px/1 Inter,sans-serif;color:var(--mute);margin-left:5px;cursor:help;position:relative;vertical-align:1px;font-style:normal;text-transform:none;letter-spacing:0}
-.i:hover::after,.i:focus::after{content:attr(data-tip);position:absolute;left:-8px;top:calc(100% + 7px);width:max-content;max-width:min(300px,80vw);background:var(--ink);color:#fff;font:400 12.5px/1.45 Inter,sans-serif;padding:8px 10px;border-radius:7px;z-index:45;white-space:normal;text-align:left;box-shadow:0 6px 18px rgba(0,0,0,.18)}
-.i.lft:hover::after,.i.lft:focus::after{left:auto;right:-8px}
+#tipbox{position:fixed;display:none;max-width:min(320px,86vw);background:var(--ink);color:#fff;font:400 12.5px/1.5 Inter,sans-serif;padding:8px 11px;border-radius:7px;z-index:60;box-shadow:0 6px 18px rgba(0,0,0,.2);pointer-events:none}
 .i:focus{outline:2px solid #2f6fed;outline-offset:1px}
 .pill{display:inline-block;font-size:13px;font-weight:700;border-radius:999px;padding:2px 10px;vertical-align:4px;margin-right:4px;border:1px solid}
 .pill.ok{color:var(--good);background:#eaf6ef;border-color:#bfe3cd}.pill.warn{color:var(--warn);background:#fff4e5;border-color:#f3d6a8}.pill.act{color:var(--act);background:#fdecea;border-color:#f3c3bd}
