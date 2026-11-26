@@ -1,9 +1,10 @@
 [
-{"id":"TKseed01","base":"27","title":"Lead Ambassadors recruited at the 6 test colleges","owner":"T03","due":"2027-01-17","status":"done","campaign_id":"B1","source":"plan"},
-{"id":"TKseed02","base":"27","title":"Crew captains: 300 signed up (week 10 milestone)","owner":"T03","due":"2027-03-14","status":"doing","campaign_id":"B1","source":"plan"},
-{"id":"TKseed03","base":"27","title":"Weekly review: pace vs plan, Warn/Act list, first money release","owner":"GL","due":"2027-03-15","status":"todo","campaign_id":null,"source":"plan"},
-{"id":"TKseed04","base":"27","title":"Alumni waitlist count for the go / stop review","owner":"T06","due":"2027-03-15","status":"todo","campaign_id":"B5","source":"plan"},
-{"id":"TKseed05","base":"27","title":"Read the week-9 paid holdout: do ads bring friend groups?","owner":"T04","due":"2027-03-17","status":"todo","campaign_id":"C01","source":"plan"},
-{"id":"TKseed06","base":"27","title":"Arrival design: 60% of pass holders have an entry window (week 12)","owner":"SEC","due":"2027-03-28","status":"todo","campaign_id":null,"source":"plan"},
-{"id":"TKseed07","base":"27","title":"Open the day scholar 'I am coming' taps (week 12)","owner":"T05","due":"2027-03-28","status":"todo","campaign_id":"B3","source":"plan"}
+{"id": "TKseed01", "base": "27", "title": "Lead Ambassadors recruited at the 6 test colleges", "owner": "T03", "due": "2026-11-29", "status": "done", "campaign_id": "B1", "source": "plan"},
+{"id": "TKseed02", "base": "27", "title": "Crew captains: 300 signed up (week 10 milestone)", "owner": "T03", "due": "2027-01-24", "status": "doing", "campaign_id": "B1", "source": "plan"},
+{"id": "TKseed03", "base": "27", "title": "Week 10 review: forecast, Warn/Act list, first reserve release", "owner": "GL", "due": "2027-01-25", "status": "todo", "campaign_id": null, "source": "plan"},
+{"id": "TKseed04", "base": "27", "title": "Alumni waitlist count for the go / stop review", "owner": "T06", "due": "2027-01-25", "status": "todo", "campaign_id": "B5", "source": "plan"},
+{"id": "TKseed05", "base": "27", "title": "Read the week-9 paid holdout: do ads bring friend groups?", "owner": "T04", "due": "2027-01-27", "status": "todo", "campaign_id": "C01", "source": "plan"},
+{"id": "TKseed06", "base": "27", "title": "Arrival design: 60% of pass holders have an entry window (week 12)", "owner": "SEC", "due": "2027-02-07", "status": "todo", "campaign_id": null, "source": "plan"},
+{"id": "TKseed07", "base": "27", "title": "Open the day scholar 'I am coming' taps (week 12)", "owner": "T05", "due": "2027-02-07", "status": "todo", "campaign_id": "B3", "source": "plan"},
+{"id": "TKseed08", "base": "27", "title": "Fest eve check: gates, waitlist release, volunteer shifts", "owner": "GL", "due": "2027-02-25", "status": "todo", "campaign_id": null, "source": "plan"}
 ]

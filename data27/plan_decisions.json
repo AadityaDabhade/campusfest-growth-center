@@ -1,0 +1,10 @@
+[
+["decision_id", "decided_at", "campaign_id", "kind", "amount_inr", "title", "reason", "expected", "metric_key", "review_at"],
+["PD1", "2027-01-25T10:00:00", "B2", "release_reserve", 100000, "Release ₹1L of reserve to Group Pass + Welcome Back", "Week 10 review: cheapest next extra attendee (under its ₹250 cap), confidence high", "More extra attendees at under ₹250 each", "expected_extra_attendees", "2027-02-08T10:00:00"],
+["PD2", "2027-01-25T10:00:00", "B1", "release_reserve", 100000, "Release ₹1L of reserve to Campus Outreach", "Week 10 review: next extra attendee under its ₹235 cap, confidence high", "More extra attendees at under ₹235 each", "expected_extra_attendees", "2027-02-08T10:00:00"],
+["PD3", "2027-01-25T10:00:00", "C01", "set_planned_budget", 100000, "Cut Paid Social to reveals and reminders only", "Week 10 review: cost per expected attendee above the ₹250 cap and opt-outs above 15%", "Cost per attendee falls toward the cap; opt-outs stop rising", "cost_per_expected_visitor", "2027-02-08T10:00:00"],
+["PD4", "2027-01-25T10:00:00", "B4", "task", 0, "Volunteer Corps: cut cost per volunteer (deposit back as food credit, one tee)", "Week 10 review: cost per extra attendee above the ₹200 cap", "Cost per extra attendee falls", "cost_per_extra", "2027-02-08T10:00:00"],
+["PD5", "2027-02-08T10:00:00", "", "hold", 0, "Hold the last ₹1.5L of reserve", "Week 12 review: no bet's next extra attendee is under its cap any more (the new money is still arriving as registrations)", "Re-check at the week 14 review", "expected_visitors", "2027-02-22T10:00:00"],
+["PD6", "2027-02-08T10:00:00", "B3", "stop", 0, "Stop Day Scholar Turnout", "Week 12 review: fair test (300+ per group, 4 weeks) and no clear gap over the comparison group", "No more spend on it", "spend", "2027-02-22T10:00:00"],
+["PD7", "2027-02-22T10:00:00", "", "hold", 0, "Keep the last ₹1.5L unspent", "Week 14 review: still no bet under its cap for the next rupee; money only follows proof", "Return ₹1.5L to the fest budget", "spend", "2027-02-26T10:00:00"]
+]

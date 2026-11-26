@@ -1,4 +1,4 @@
 [
-["event_name", "history_start", "history_end", "event_starts_at", "event_ends_at", "timezone", "currency", "fictional", "simulated", "city", "plan_start", "registration_opens", "reserve_inr", "tranche_inr"],
-["CampusFest 2027", "2027-01-04T00:00:00", "2027-03-14T00:00:00", "2027-04-17T10:00:00", "2027-04-18T21:30:00", "Asia/Kolkata", "INR", true, true, "New Delhi", "2027-01-04T00:00:00", "2027-02-22T00:00:00", 350000, 500000]
+["event_name", "history_start", "history_end", "event_starts_at", "event_ends_at", "timezone", "currency", "fictional", "simulated", "city", "plan_start", "registration_opens", "reserve_inr", "tranche_inr", "today", "gate_capacity_per_hour"],
+["CampusFest 2027", "2026-11-16T00:00:00", "2027-02-28T00:00:00", "2027-02-26T10:00:00", "2027-02-27T21:30:00", "Asia/Kolkata", "INR", true, true, "New Delhi", "2026-11-16T00:00:00", "2027-01-04T00:00:00", 350000, 500000, "2027-01-24T00:00:00", 2500]
 ]

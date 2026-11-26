@@ -3,8 +3,8 @@
 (function (root) {
   'use strict';
 
-  const TABLES = ['event', 'targets', 'campaigns', 'daily', 'people', 'interactions', 'registrations', 'reg_history', 'checkins', 'pace_curve'];
-  const SHEETS = { event: 'Event', targets: 'Targets', campaigns: 'Campaigns', daily: 'Daily Marketing', people: 'People', interactions: 'Interest and Engagement', registrations: 'Registrations', reg_history: 'Registration History', checkins: 'Check-ins', pace_curve: 'Pace Curve' };
+  const TABLES = ['event', 'targets', 'campaigns', 'daily', 'people', 'interactions', 'registrations', 'reg_history', 'checkins', 'pace_curve', 'plan_decisions'];
+  const SHEETS = { event: 'Event', targets: 'Targets', campaigns: 'Campaigns', daily: 'Daily Marketing', people: 'People', interactions: 'Interest and Engagement', registrations: 'Registrations', reg_history: 'Registration History', checkins: 'Check-ins', pace_curve: 'Pace Curve', plan_decisions: 'Plan Decisions' };
   const KEYS = { daily: 'activity_id', reg_history: 'history_id', checkins: 'event_id', interactions: 'interaction_id', people: 'person_id', registrations: 'registration_id', campaigns: 'campaign_id' };
   const REQUIRED = {
     event: ['event_name', 'history_start', 'history_end', 'event_starts_at', 'event_ends_at'],
@@ -16,10 +16,11 @@
     registrations: ['registration_id', 'person_id', 'registered_at'],
     reg_history: ['history_id', 'registration_id', 'effective_at', 'status'],
     checkins: ['event_id', 'person_id', 'occurred_at', 'result', 'verification'],
-    pace_curve: ['week', 'share']
+    pace_curve: ['week', 'share'],
+    plan_decisions: ['decision_id', 'decided_at', 'kind']
   };
-  const TIME_FIELDS = { event: ['history_start', 'history_end', 'event_starts_at', 'event_ends_at', 'plan_start', 'registration_opens'], targets: ['effective_at'], campaigns: ['created_at', 'planned_start_at', 'planned_end_at'], daily: ['activity_date'], people: ['first_seen_at'], interactions: ['occurred_at'], registrations: ['registered_at'], reg_history: ['effective_at'], checkins: ['occurred_at'] };
-  const NUM_FIELDS = { pace_curve: ['week', 'share'], event: ['reserve_inr', 'tranche_inr'], targets: ['identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch'], daily: ['impressions', 'clicks', 'reported_reach', 'landing_page_sessions', 'registration_starts', 'marketing_spend_inr'], campaigns: ['planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'bet_rank', 'reserve_released_inr'] };
+  const TIME_FIELDS = { event: ['history_start', 'history_end', 'event_starts_at', 'event_ends_at', 'plan_start', 'registration_opens', 'today'], plan_decisions: ['decided_at', 'review_at'], targets: ['effective_at'], campaigns: ['created_at', 'planned_start_at', 'planned_end_at'], daily: ['activity_date'], people: ['first_seen_at'], interactions: ['occurred_at'], registrations: ['registered_at'], reg_history: ['effective_at'], checkins: ['occurred_at'] };
+  const NUM_FIELDS = { pace_curve: ['week', 'share'], plan_decisions: ['amount_inr'], event: ['reserve_inr', 'tranche_inr', 'gate_capacity_per_hour'], targets: ['identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch'], daily: ['impressions', 'clicks', 'reported_reach', 'landing_page_sessions', 'registration_starts', 'marketing_spend_inr'], campaigns: ['planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'bet_rank', 'reserve_released_inr'] };
   const ACTIVE = ['confirmed', 'interested', 'waitlisted'];
   const DEFAULT_OWNERS = { T03: 'Meera Iyer', T04: 'Arjun Verma', T05: 'Nisha Rao', T06: 'Dev Malhotra' };
 
@@ -43,11 +44,12 @@
   function addDays(D, n) { const d = new Date(D + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
   function daysBetween(a, b) { return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000); }
   function weekStart(D) { const d = new Date(D + 'T00:00:00Z'); const wd = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - wd); return d.toISOString().slice(0, 10); }
+  function dlabel(D) { return D ? Number(D.slice(8, 10)) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(D.slice(5, 7)) - 1] : ''; }
   function num(v) { const n = Number(v); return isFinite(n) ? n : 0; }
   function round(v, p) { if (v === null || v === undefined || !isFinite(v)) return null; const f = Math.pow(10, p || 0); return Math.round(v * f) / f; }
   function div(a, b) { return b ? a / b : null; }
   function nf(n) { return n === null || n === undefined || !isFinite(n) ? '–' : Math.round(n).toLocaleString('en-IN'); }
-  function rs(n) { return n === null || n === undefined || !isFinite(n) ? '–' : '₹' + (Math.abs(n) < 1000 && n % 1 ? n.toFixed(1) : Math.round(n).toLocaleString('en-IN')); }
+  function rs(n) { return n === null || n === undefined || !isFinite(n) ? '–' : '₹' + Math.round(n).toLocaleString('en-IN'); }
 
   /* ---------- loading, validation, cleaning ---------- */
   function rowsToObjects(arr) {
@@ -61,7 +63,7 @@
     const errors = [], warnings = [];
     TABLES.forEach(t => {
       const rows = raw[t];
-      if (!rows || !rows.length) { if (t === 'pace_curve') return; (t === 'event' || t === 'people') ? errors.push(SHEETS[t] + ': missing or empty') : warnings.push(SHEETS[t] + (t === 'checkins' ? ': no check-ins yet' : ': missing or empty')); return; }
+      if (!rows || !rows.length) { if (t === 'pace_curve' || t === 'plan_decisions') return; (t === 'event' || t === 'people') ? errors.push(SHEETS[t] + ': missing or empty') : warnings.push(SHEETS[t] + (t === 'checkins' ? ': no check-ins yet' : ': missing or empty')); return; }
       const cols = Object.keys(rows[0]);
       const miss = REQUIRED[t].filter(c => !cols.includes(c));
       if (miss.length) errors.push(SHEETS[t] + ': missing columns ' + miss.join(', '));
@@ -88,10 +90,11 @@
 
   /* Edits are an overlay on the source tables: they never change the original file. */
   function applyEdits(raw, edits) {
-    const t = {}; TABLES.forEach(k => { t[k] = (raw[k] || []).slice(); });
+    const t = {}; TABLES.forEach(k => { t[k] = (raw[k] || []).slice(); }); t.plan_skip = (raw.plan_skip || []).slice();
     (edits || []).forEach(e => {
       const p = e.payload || {};
       try {
+        if (p.replaces_plan) t.plan_skip.push(p.replaces_plan);
         if (e.type === 'campaign_update') {
           t.campaigns = t.campaigns.map(c => c.campaign_id === p.campaign_id ? Object.assign({}, c, p.fields) : c);
         } else if (e.type === 'campaign_add') {
@@ -126,8 +129,11 @@
       eventStart: ev.event_starts_at, eventEnd: ev.event_ends_at, eventStartDay: day(ev.event_starts_at), eventEndDay: day(ev.event_ends_at),
       timezone: ev.timezone || 'Asia/Kolkata', currency: ev.currency || 'INR',
       simulated: ev.simulated === true || ev.simulated === 'TRUE' || ev.simulated === 1, city: ev.city || null,
-      planStart: day(ev.plan_start), regOpens: day(ev.registration_opens), reserve: num(ev.reserve_inr), tranche: num(ev.tranche_inr)
+      planStart: day(ev.plan_start), regOpens: day(ev.registration_opens), reserve: num(ev.reserve_inr), tranche: num(ev.tranche_inr),
+      today: day(ev.today), gateCap: num(ev.gate_capacity_per_hour) || null
     };
+    const skip = new Set(raw.plan_skip || []);
+    ds.plan = (tb.plan_decisions || []).filter(x => x.decision_id && !skip.has(x.decision_id)).sort((a, b) => (a.decided_at || '').localeCompare(b.decided_at || ''));
     ds.paceCurve = (tb.pace_curve || []).map(r => ({ week: num(r.week), share: num(r.share) })).filter(r => r.week).sort((a, b) => a.week - b.week);
     if (ds.paceCurve.length && !ds.event.planStart) ds.event.planStart = ds.event.start;
     ds.camps = new Map(); tb.campaigns.forEach(x => ds.camps.set(x.campaign_id, x));
@@ -227,13 +233,16 @@
 
   /* ---------- assumptions (editable in the app, always labelled A) ---------- */
   const DEFAULT_ASSUMPTIONS = {
-    showup_confirmed: { value: 0.75, low: 0.65, high: 0.85, label: 'Show-up of confirmed registrations', tag: 'A' },
-    showup_interested: { value: 0.40, low: 0.30, high: 0.50, label: 'Show-up of interested (unconfirmed) registrations', tag: 'A' },
-    showup_waitlisted: { value: 0.25, low: 0.15, high: 0.35, label: 'Show-up of waitlisted registrations', tag: 'A' },
-    walkin_share: { value: 0.06, low: 0.04, high: 0.08, label: 'Walk-ins as a share of all visitors', tag: 'A' },
-    scale_factor: { value: 0.5, low: 0.4, high: 0.7, label: 'How well extra spend scales (1 = no diminishing returns)', tag: 'A' },
-    cost_cap: { value: 250, low: 200, high: 300, label: 'Cost cap per verified visitor (₹)', tag: 'A' },
-    gate_capacity: { value: 500, low: 400, high: 600, label: 'Safe gate arrivals per hour (2025 venue)', tag: 'A' }
+    showup_confirmed: { value: 0.75, low: 0.70, high: 0.80, label: 'Show-up of confirmed registrants', tag: 'A', evidence: '2025: 73–77% of confirmed people came' },
+    showup_interested: { value: 0.55, low: 0.35, high: 0.65, label: 'Show-up of unconfirmed registrants, a week or more out', tag: 'A', evidence: '2025: 54–66% of people unconfirmed weeks before the fest still came (most confirmed later)' },
+    showup_interested_late: { value: 0.05, low: 0.0, high: 0.15, label: 'Show-up of people still unconfirmed on fest eve', tag: 'A', evidence: '2025: 0 of 29 people unconfirmed on fest eve came' },
+    showup_waitlisted: { value: 0.20, low: 0.0, high: 0.30, label: 'Show-up of waitlisted registrants', tag: 'A', evidence: '2025: 0 of 88 (no waitlist release then); 2027 releases unscanned passes at 2 pm' },
+    walkin_share: { value: 0.06, low: 0.04, high: 0.08, label: 'Walk-ins as a share of all visitors', tag: 'A', evidence: '2025: 6.1% of visitors had not registered' },
+    future_regs: { value: 1.0, low: 0.7, high: 1.2, label: 'Registrations still to come vs the plan curve', tag: 'A', evidence: 'Late sign-ups can fall short of the curve more easily than beat it' },
+    scale_factor: { value: 0.5, low: 0.4, high: 0.7, label: 'How well extra spend scales (1 = no diminishing returns)', tag: 'A', evidence: 'Planning value; checked at each review' },
+    release_yield: { value: 0.8, low: 0.5, high: 1.0, label: 'How much of a bet\'s estimated gain new money delivers', tag: 'A', evidence: 'Scaled bets usually do a bit worse than their test' },
+    cost_cap: { value: 250, low: 200, high: 300, label: 'Cost cap per extra attendee (₹)', tag: 'A', evidence: 'Plan cap' },
+    gate_capacity: { value: 500, low: 400, high: 600, label: 'Safe gate arrivals per hour', tag: 'A', evidence: '2025 venue; 2027 plan uses 6 lanes ≈ 2,500/hr' }
   };
   function A(assump, k, which) { const a = (assump && assump[k]) || DEFAULT_ASSUMPTIONS[k]; return a[which || 'value']; }
 
@@ -246,32 +255,96 @@
   function weekOf(ds, D) { return ds.event.planStart ? Math.floor(daysBetween(ds.event.planStart, D) / 7) + 1 : null; }
   function shareAt(ds, D) {
     const c = ds.paceCurve; if (!c.length || !ds.event.planStart) return null;
+    if (ds.event.eventStartDay && D >= addDays(ds.event.eventStartDay, -1)) return c[c.length - 1].share; // registrations close on fest eve
     const w = (daysBetween(ds.event.planStart, D) + 1) / 7; // weeks completed by the end of D
     if (w <= c[0].week) return c[0].share * Math.max(0, w / c[0].week);
     for (let i = 1; i < c.length; i++) if (w <= c[i].week) { const a = c[i - 1], b = c[i]; return a.share + (b.share - a.share) * (w - a.week) / (b.week - a.week); }
     return c[c.length - 1].share;
   }
-  function perRegistrant(s, assump, w) {
+  function interestedRate(early, late, daysLeft) { return daysLeft >= 7 ? early : daysLeft <= 1 ? late : late + (early - late) * (daysLeft - 1) / 6; }
+  function perRegistrant(s, assump, w, daysLeft) {
     const n = s.registered; if (!n) return null;
-    return (s.status.confirmed * A(assump, 'showup_confirmed', w) + s.status.interested * A(assump, 'showup_interested', w) + s.status.waitlisted * A(assump, 'showup_waitlisted', w)) / n;
+    const si = interestedRate(A(assump, 'showup_interested', w), A(assump, 'showup_interested_late', w), daysLeft === undefined ? 30 : daysLeft);
+    return (s.status.confirmed * A(assump, 'showup_confirmed', w) + s.status.interested * si + s.status.waitlisted * A(assump, 'showup_waitlisted', w)) / n;
+  }
+  /* Time-aware campaign state: the campaign row plus the plan's decisions taken by date D. */
+  function campState(ds, id, D) {
+    const c = ds.camps.get(id) || {}, cut = cutoff(D);
+    const mine = !c.reserve_released_at || day(c.reserve_released_at) <= D;
+    const st = { status: c.status || 'active', planned: c.planned_budget_inr || null, released: mine ? num(c.reserve_released_inr) || 0 : 0, lastRelease: mine && c.reserve_released_at ? day(c.reserve_released_at) : null, decisions: [] };
+    if (!mine) st.planned = (st.planned || 0) - (num(c.reserve_released_inr) || 0);
+    ds.plan.forEach(p => {
+      if (p.campaign_id !== id || !p.decided_at || p.decided_at > cut) return;
+      st.decisions.push(p);
+      if (p.kind === 'release_reserve') { st.released += num(p.amount_inr); st.planned = (st.planned || 0) + num(p.amount_inr); st.lastRelease = day(p.decided_at); }
+      else if (p.kind === 'set_planned_budget') st.planned = num(p.amount_inr);
+      else if (p.kind === 'stop') st.status = 'stopped';
+      else if (p.kind === 'pause') st.status = 'paused';
+    });
+    return st;
+  }
+  function planDecisionsAt(ds, D) { const cut = cutoff(D); return ds.plan.filter(p => p.decided_at && p.decided_at <= cut); }
+
+  /* ---------- forecast: the fest played 1,000 times with different luck ---------- */
+  function seeded(str) { let h = 1779033703 ^ str.length; for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } return function () { h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); let t = (h ^= h >>> 16) >>> 0; t += 0x6D2B79F5; let r = Math.imul(t ^ t >>> 15, t | 1); r ^= r + Math.imul(r ^ r >>> 7, r | 61); return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
+  function tri(u, lo, mode, hi) { if (!(hi > lo)) return mode; const f = (mode - lo) / (hi - lo); return u < f ? lo + Math.sqrt(u * (hi - lo) * (mode - lo)) : hi - Math.sqrt((1 - u) * (hi - lo) * (hi - mode)); }
+  function draw(u, assump, k) { const a = (assump && assump[k]) || DEFAULT_ASSUMPTIONS[k]; return tri(u, a.low, a.value, a.high); }
+  function r10(v) { return v === null || v === undefined || !isFinite(v) ? null : Math.round(v / 10) * 10; }
+  /* extra: [{amount, cost}] money moved now (cost = ₹ per extra attendee for the next rupee; negative amount = money taken away) */
+  function forecast(ds, D, assump, opts) {
+    const o = opts || {}, N = o.runs || 1000, s = snapshot(ds, D), t = s.target, ev = ds.event;
+    const base = t ? t.unique_external_visitors_goal : null, stretch = t ? (t.stretch_visitors_goal || null) : null;
+    const out = { asOf: D, target: base, stretch, registered: s.registered, visitors_so_far: s.visitorCount };
+    const verdict = (p10, p50) => base ? (p10 >= base ? 'Safe' : p50 >= base ? 'At risk' : 'Off track') : null;
+    if (D >= ev.eventEndDay) return Object.assign(out, { mode: 'actual', bad: s.visitorCount, likely: s.visitorCount, good: s.visitorCount, verdict: base ? (s.visitorCount >= base ? 'Hit' : 'Missed') : null, chance: null, basis: 'Verified check-ins: the fest is over' });
+    const R = s.registered; if (!R) return Object.assign(out, { mode: 'too early', verdict: null, basis: 'No registrations yet' });
+    const daysLeft = daysBetween(D, ev.eventStartDay), live = D >= ev.eventStartDay;
+    let future = 0, how; const curve = shareAt(ds, D) !== null;
+    if (!live) {
+      const sh = shareAt(ds, D);
+      if (sh !== null) {
+        if (sh < 0.1) return Object.assign(out, { mode: 'too early', verdict: null, share_expected: round(sh, 3), basis: 'Under 10% of registrations expected by now: too early to forecast' });
+        future = R / sh - R; how = 'registrations so far ÷ ' + Math.round(sh * 100) + '% expected by now on the plan curve';
+      } else {
+        const ser = dailySeries(ds, addDays(D, -6), D), rr = ser.registrations.reduce((a, b) => a + b, 0) / 7, dl = Math.max(0, daysBetween(D, addDays(ev.eventStartDay, -1)));
+        if (t && t.registration_goal && R < 0.1 * t.registration_goal) return Object.assign(out, { mode: 'too early', verdict: null, basis: 'Under 10% of the registration goal is in: too early to forecast' });
+        future = rr * dl; how = 'registrations so far + last 7 days\' rate (' + round(rr, 1) + '/day) for ' + dl + ' more days, with room for a late surge';
+      }
+    }
+    let notYet = null;
+    if (live) { notYet = { c: 0, o: 0 }; s.regByPerson.forEach((r, p) => { if (s.visitors.has(p)) return; if (r.status === 'confirmed') notYet.c++; else if (r.status !== 'cancelled') notYet.o++; }); }
+    const rnd = seeded(ds.label + '|' + D), runs = [], plain = [];
+    for (let i = 0; i < N; i++) {
+      const sc = draw(rnd(), assump, 'showup_confirmed'), sie = draw(rnd(), assump, 'showup_interested'), sil = draw(rnd(), assump, 'showup_interested_late'), sw = draw(rnd(), assump, 'showup_waitlisted'), ws = draw(rnd(), assump, 'walkin_share'), mu = rnd(), m = curve ? draw(mu, assump, 'future_regs') : tri(mu, 0.6, 1.0, 1.8), y = draw(rnd(), assump, 'release_yield');
+      let total;
+      if (live) total = s.visitorCount + (notYet.c * tri(rnd(), 0.4, 0.5, 0.6) + notYet.o * 0.05) / (1 - ws);
+      else {
+        const si = interestedRate(sie, sil, daysLeft), pr = (s.status.confirmed * sc + s.status.interested * si + s.status.waitlisted * sw) / R;
+        total = (R + future * m) * pr / (1 - ws);
+      }
+      plain.push(total);
+      (o.extra || []).forEach(x => { if (x.cost > 0) total += (x.amount / x.cost) * (x.amount > 0 ? y : 1); });
+      runs.push(Math.max(s.visitorCount, total));
+    }
+    const pick = arr => { const a = arr.slice().sort((x, y) => x - y); return { bad: a[Math.floor(N * 0.1)], likely: a[Math.floor(N * 0.5)], good: a[Math.floor(N * 0.9)] }; };
+    const q = pick(runs), q0 = pick(plain);
+    const pr0 = perRegistrant(s, assump, 'value', daysLeft);
+    return Object.assign(out, {
+      mode: live ? 'live' : 'forecast', bad: r10(q.bad), likely: r10(q.likely), good: r10(q.good), verdict: verdict(q.bad, q.likely),
+      chance: base ? round(runs.filter(v => v >= base).length / N, 2) : null, chance_stretch: stretch ? round(runs.filter(v => v >= stretch).length / N, 2) : null,
+      before_extra: o.extra && o.extra.length ? { bad: r10(q0.bad), likely: r10(q0.likely), good: r10(q0.good), verdict: verdict(q0.bad, q0.likely) } : null,
+      projected_registrations: live ? R : Math.round(R + future), attend_per_registrant: round(pr0, 3), days_left: daysLeft,
+      basis: live ? 'Visitors so far + confirmed people not yet in × 40–60% on day 2 + walk-ins' : 'Final registrations (' + how + ') × chance each one comes, by status, + walk-ins. Played 1,000 times with each input drawn from its range.'
+    });
   }
   function projection(ds, D, assump) {
-    const s = snapshot(ds, D);
-    const ended = D >= ds.event.eventEndDay, started = D >= ds.event.eventStartDay;
-    if (ended) return { mode: 'actual', actual: s.visitorCount, low: s.visitorCount, likely: s.visitorCount, high: s.visitorCount, basis: 'Verified check-ins (S)' };
-    const sh = shareAt(ds, D);
-    if (sh !== null && !started) {
-      if (sh < 0.1) return { mode: 'too early', actual: 0, low: null, likely: null, high: null, basis: 'Under 10% of registrations expected so far: too early to project (A)' };
-      const finalRegs = s.registered / sh;
-      const f = w => Math.round(finalRegs * (perRegistrant(s, assump, w) || 0) / (1 - A(assump, 'walkin_share', w)));
-      return { mode: 'forecast', actual: 0, low: Math.round(f('low') * 0.9), likely: f('value'), high: Math.round(f('high') * 1.1), projected_registrations: Math.round(finalRegs), basis: 'Registrations so far ÷ share expected by this week on the pace curve, × show-up by status, + walk-ins (A)' };
-    }
-    const exp = w => (s.status.confirmed * A(assump, 'showup_confirmed', w) + s.status.interested * A(assump, 'showup_interested', w) + s.status.waitlisted * A(assump, 'showup_waitlisted', w)) / (1 - A(assump, 'walkin_share', w));
-    return {
-      mode: started ? 'in progress' : 'forecast', actual: s.visitorCount,
-      low: Math.max(s.visitorCount, Math.round(exp('low'))), likely: Math.max(s.visitorCount, Math.round(exp('value'))), high: Math.max(s.visitorCount, Math.round(exp('high'))),
-      basis: 'Active registrations × show-up rates by status + walk-in share (A)'
-    };
+    const f = forecast(ds, D, assump);
+    return { mode: f.mode, actual: f.visitors_so_far, low: f.bad === undefined ? null : f.bad, likely: f.likely === undefined ? null : f.likely, high: f.good === undefined ? null : f.good, verdict: f.verdict, chance: f.chance, projected_registrations: f.projected_registrations, basis: f.basis };
+  }
+  function checkpoints(ds) {
+    const ev = ds.event, curve = ds.paceCurve.length > 0;
+    const review = ev.today || addDays(ev.eventStartDay, -33);
+    return { review, eve: addDays(ev.eventStartDay, -1), result: ev.end, today: ev.today || null, curve };
   }
 
   function kpis(ds, D, assump) {
@@ -285,6 +358,8 @@
       showup: round(s.showup, 4), walkinShare: round(div(s.walkins, s.visitorCount), 4),
       spend: s.spend, budgetUsed: g ? round(div(s.spend, g.budget), 4) : null,
       costPerVisitor: round(div(s.spend, s.visitorCount), 1), costPerRegistration: round(div(s.spend, s.registered), 1),
+      expectedFromRegistered: Math.round(s.registered * (perRegistrant(s, assump, 'value', daysBetween(D, ds.event.eventStartDay)) || 0)),
+      costPerAttendee: round(div(s.spend, D >= ds.event.eventStartDay ? s.visitorCount : s.registered * (perRegistrant(s, assump, 'value', daysBetween(D, ds.event.eventStartDay)) || 0)), 1),
       week: weekOf(ds, D),
       attainment: g ? { identified: round(div(s.identified, g.identified), 4), registered: round(div(s.registered, g.registered), 4), visitors: round(div(s.visitorCount, g.visitors), 4) } : null,
       projection: proj
@@ -296,7 +371,7 @@
     const s = snapshot(ds, D), assump = o.assumptions;
     const ids = Array.from(ds.camps.keys()).concat([null]);
     const rows = ids.map(id => {
-      const c = ds.camps.get(id) || {};
+      const c = ds.camps.get(id) || {}, cs = id ? campState(ds, id, D) : {};
       const a = s.anon[id] || { spend: 0, impressions: 0, clicks: 0, reach: 0, sessions: 0, starts: 0 };
       const st = { confirmed: 0, interested: 0, waitlisted: 0, cancelled: 0 }; let registered = 0;
       const M = c.audience_type === 'host' ? s.hostReg : s.regByPerson;
@@ -307,8 +382,8 @@
       const expected = st.confirmed * A(assump, 'showup_confirmed') + st.interested * A(assump, 'showup_interested') + st.waitlisted * A(assump, 'showup_waitlisted');
       return {
         campaign_id: id, campaign: campName(ds, id), channel: c.channel || (id ? '' : 'none'), owner_id: c.owner_id || null, owner: id ? ownerName(ds, c.owner_id) : 'Growth lead',
-        kind: c.kind || (id ? 'channel' : ''), bet_type: c.bet_type || null, audience: c.audience_type === 'host' ? 'our students' : 'outside', cost_cap_inr: c.cost_cap_inr || null, reserve_released_inr: c.reserve_released_inr || 0,
-        status: c.status || (id ? 'active' : ''), planned_budget_inr: c.planned_budget_inr || null,
+        kind: c.kind || (id ? 'channel' : ''), bet_type: c.bet_type || null, audience: c.audience_type === 'host' ? 'our students' : 'outside', cost_cap_inr: c.cost_cap_inr || null, reserve_released_inr: cs.released || 0,
+        status: id ? cs.status : '', planned_budget_inr: id ? cs.planned : null,
         spend: a.spend, impressions: a.impressions, clicks: a.clicks, sessions: a.sessions, form_starts_anon: a.starts,
         ctr: round(div(a.clicks, a.impressions), 4), session_to_start: round(div(a.starts, a.sessions), 4),
         identified_first_touch: s.identifiedByFirst[id] || 0,
@@ -347,6 +422,26 @@
     return { asOf: D, campaign: filt ? campName(ds, campaignId) : 'All campaigns', basis: filt ? 'People grouped by first-touch campaign' : 'All external people', steps, walkins: filt ? 0 : s.walkins, visitors_total: visited };
   }
 
+  /* The same four steps for every dataset: reached → registered → confirmed → attended. */
+  function funnelView(ds, D, assump, campaignId) {
+    const s = snapshot(ds, D), f = funnel(ds, D, campaignId), t = s.target || {}, filt = campaignId && campaignId !== 'all';
+    const get = n => (f.steps.find(x => x.step.startsWith(n)) || {}).n || 0, ended = D >= ds.event.eventEndDay, started = D >= ds.event.eventStartDay;
+    let spend = s.spend; if (filt) spend = (s.anon[campaignId] || { spend: 0 }).spend;
+    let attended, expected = false, walkins = filt ? 0 : s.walkins;
+    if (started) attended = get('Visited');
+    else if (filt) { const r = campaignRows(ds, D, { assumptions: assump }).find(x => x.campaign_id === campaignId) || {}; attended = r.expected_visitors || 0; expected = true; }
+    else { const pr = perRegistrant(s, assump, 'value', daysBetween(D, ds.event.eventStartDay)); attended = pr !== null ? Math.round(s.registered * pr) : null; walkins = 0; expected = true; }
+    const sh = shareAt(ds, D);
+    const steps = [
+      { key: 'reached', label: 'Reached', help: 'Outside people who left their details (a page visit, form or email sign-up). Each person counted once.', n: get('Identified'), target: filt ? null : t.identified_external_people_goal || null },
+      { key: 'registered', label: 'Registered', help: 'Signed up for a pass.', n: get('Registered'), target: filt ? null : t.registration_goal || null, pace: !filt && sh !== null && !started ? Math.round(t.registration_goal * sh) : null },
+      { key: 'confirmed', label: 'Confirmed', help: 'Said "I am coming" (latest status on this date).', n: get('Confirmed'), target: null },
+      { key: 'attended', label: expected ? 'Expected to come' : 'Came', help: expected ? 'Estimate for people registered so far: each status × the chance it comes. The Overview forecast also adds registrations still to come and walk-ins.' : 'Scanned in at the gate and verified, counted once per person.', n: attended, expected, target: filt ? null : t.unique_external_visitors_goal || null }
+    ];
+    steps.forEach((x, i) => { x.from_prev = i && steps[i - 1].n ? round(x.n / steps[i - 1].n, 4) : null; x.cost_each = x.n ? round(spend / x.n, 0) : null; });
+    let worst = null; steps.forEach((x, i) => { if (i && x.from_prev !== null && (!worst || x.from_prev < worst.from_prev)) worst = x; });
+    return { asOf: D, campaign: f.campaign, steps, walkins, total_attended: attended !== null ? attended + walkins : null, spend, biggest_drop: worst ? worst.key : null, started, ended };
+  }
   function anonFunnel(ds, D, campaignId) {
     const s = snapshot(ds, D); const z = { spend: 0, impressions: 0, clicks: 0, reach: 0, sessions: 0, starts: 0 };
     Object.keys(s.anon).forEach(k => { if (campaignId && campaignId !== 'all' && k !== campaignId) return; const a = s.anon[k]; Object.keys(z).forEach(f => z[f] += a[f]); });
@@ -416,7 +511,7 @@
     let both = 0; if (days.length > 1) s.byDay[days[0]].forEach(p => { if (days.slice(1).some(d => s.byDay[d].has(p))) both++; });
     const hours = Object.keys(s.hourly).sort().map(h => ({ hour: h.replace('T', ' ') + ':00', entries: s.hourly[h] }));
     const peak = hours.reduce((m, h) => (!m || h.entries > m.entries ? h : m), null);
-    const cap = A(assump, 'gate_capacity');
+    const cap = ds.event.gateCap || A(assump, 'gate_capacity');
     return { asOf: D, by_day: days.map(d => ({ day: d, unique_visitors: s.byDay[d].size })), both_days: both, unique_visitors: s.visitorCount, verified_entries: s.entries, entries_per_visitor: round(div(s.entries, s.visitorCount), 2), peak_hour: peak, gate_capacity_assumed: cap, peak_vs_capacity: peak ? round(peak.entries / cap, 3) : null, hours, checkin_quality: Object.assign({}, s.chk) };
   }
 
@@ -484,11 +579,11 @@
     const apr = g => g.reg ? (g.confirmed * sc + g.interested * si + g.waitlisted * sw) / g.reg : 0;
     const minN = 300;
     return bets.map(c => {
-      const id = c.campaign_id, a = arms[id] || { test: z(), comparison: z(), direct: z() }, sp = (s.anon[id] || { spend: 0 }).spend;
-      const startDay = day(c.planned_start_at) || ds.event.start, weeks = Math.max(0, daysBetween(startDay, D) + 1) / 7;
+      const id = c.campaign_id, a = arms[id] || { test: z(), comparison: z(), direct: z() }, sp = (s.anon[id] || { spend: 0 }).spend, cs = campState(ds, id, D);
+      const startDay = [day(c.planned_start_at) || ds.event.start, ds.event.regOpens || ''].sort().pop(), weeks = Math.max(0, daysBetween(startDay, D) + 1) / 7;
       const cap = c.cost_cap_inr || A(assump, 'cost_cap'), scale = c.scale_factor || A(assump, 'scale_factor');
       const hasComp = a.comparison.n > 0;
-      let rt = null, rc = null, lift = null, se = null, sure = null, extraRegs, perReg, extra, extraLow = null, evidence = [];
+      let rt = null, rc = null, lift = null, se = null, sure = null, extraRegs, perReg, extra, extraLow = null, extraHigh = null, evidence = [], fair = true;
       if (hasComp) {
         rt = div(a.test.reg, a.test.n); rc = div(a.comparison.reg, a.comparison.n);
         lift = rt !== null && rc !== null ? rt - rc : null;
@@ -496,39 +591,48 @@
         sure = lift !== null && se ? normCdf(lift / se) : null;
         perReg = apr(a.test); extraRegs = lift !== null ? a.test.n * lift : 0; extra = extraRegs * perReg;
         extraLow = lift !== null && se ? a.test.n * Math.max(0, lift - 0.8416 * se) * perReg : null;
-        if (a.test.n < minN || a.comparison.n < minN) evidence.push('fewer than ' + minN + ' people in a group (' + nf(a.test.n) + ' test, ' + nf(a.comparison.n) + ' comparison)');
-        if (weeks < 2) evidence.push('under 2 weeks of exposure');
-        if (sure !== null && sure < 0.8) evidence.push('only ' + Math.round(sure * 100) + '% sure the lift is above zero (need 80%)');
+        extraHigh = lift !== null && se ? a.test.n * Math.max(0, lift + 0.8416 * se) * perReg : null;
+        if (a.test.n < minN || a.comparison.n < minN) evidence.push(nf(Math.min(a.test.n, a.comparison.n)) + ' people in the smaller group; need ' + minN);
+        if (ds.event.regOpens && D < ds.event.regOpens) evidence.push('registrations open ' + dlabel(ds.event.regOpens));
+        else if (weeks < 2) evidence.push('under 2 weeks of registrations');
+        fair = !evidence.length;
+        if (sure !== null && sure < 0.8) evidence.push('gap only ' + Math.round(sure * 100) + '% likely to be real; need 80%');
       } else {
         const g = a.direct; perReg = apr(g); extraRegs = g.reg; extra = g.reg * perReg;
-        evidence.push('no comparison group: every sign-up counted as extra (A)');
+        if (ds.event.regOpens && D < ds.event.regOpens) { evidence.push('registrations open ' + dlabel(ds.event.regOpens)); fair = false; }
+        else if (g.reg < 30) { evidence.push('only ' + g.reg + ' sign-ups so far; need 30'); fair = false; }
+        else evidence.push('no comparison group: every sign-up counted as extra (A)');
       }
       const avg = extra > 0 ? sp / extra : null, next = avg !== null ? avg / scale : null, avgLow = extraLow > 0 ? sp / extraLow : null;
-      const evidenceOk = hasComp ? evidence.length === 0 : true;
+      const evidenceOk = hasComp ? evidence.length === 0 : fair;
       let decision, why;
-      if (hasComp && !evidenceOk) { decision = 'Too early'; why = 'Evidence rule not met: ' + evidence.join('; '); }
+      if (cs.status === 'stopped') { decision = 'Stopped'; why = 'Stopped at a review' + (cs.decisions.length ? ' (' + cs.decisions[cs.decisions.length - 1].reason + ')' : ''); }
+      else if (!fair) { decision = 'Too early'; why = 'Not a fair test yet: ' + evidence.join('; '); }
+      else if (hasComp && !evidenceOk) { decision = 'Stop'; why = 'Fair test, but no clear gap over the comparison group (' + evidence.join('; ') + ')'; }
       else if (!(extra > 0)) { decision = 'Stop'; why = 'No lift over the comparison group'; }
       else if (avg > cap) { decision = 'Change'; why = 'Cost per extra attendee ' + rs(avg) + ' is above the ' + rs(cap) + ' cap'; }
       else if (next <= cap && (avgLow === null || avgLow <= cap)) { decision = 'Scale'; why = 'Next-tranche cost ' + rs(next) + ' is under the ' + rs(cap) + ' cap'; }
       else { decision = 'Keep'; why = 'Works at ' + rs(avg) + ' each, but the next rupee would cost ' + rs(next) + ', above the ' + rs(cap) + ' cap: no tranche money'; }
       return {
         campaign_id: id, bet: c.campaign_name, rank: c.bet_rank || null, type: c.bet_type || null, owner_id: c.owner_id, owner: ownerName(ds, c.owner_id), audience: c.audience_type === 'host' ? 'our students' : 'outside', test_design: c.test_design || '',
-        weeks_live: round(weeks, 1), spend: sp, planned_budget_inr: c.planned_budget_inr || null, reserve_released_inr: c.reserve_released_inr || 0,
+        weeks_live: round(weeks, 1), spend: sp, planned_budget_inr: cs.planned, reserve_released_inr: cs.released, last_release: cs.lastRelease, status: cs.status,
         test_people: hasComp ? a.test.n : a.direct.n, test_registered: hasComp ? a.test.reg : a.direct.reg, comparison_people: hasComp ? a.comparison.n : null, comparison_registered: hasComp ? a.comparison.reg : null,
-        test_rate: round(rt, 4), comparison_rate: round(rc, 4), lift: round(lift, 4), sure_lift_above_zero: round(sure, 3),
-        extra_registrations: Math.round(extraRegs), attendees_per_registrant: round(perReg, 3), expected_extra_attendees: Math.round(extra), expected_extra_low: extraLow !== null ? Math.round(extraLow) : null,
+        test_rate: round(rt, 4), comparison_rate: round(rc, 4), lift: round(lift, 4), sure_lift_above_zero: round(sure, 3), gap_real: sure === null ? null : sure >= 0.9 ? 'High' : sure >= 0.8 ? 'Medium' : 'Low',
+        extra_registrations: Math.round(extraRegs), attendees_per_registrant: round(perReg, 3), expected_extra_attendees: Math.round(extra), expected_extra_low: extraLow !== null ? Math.round(extraLow) : null, expected_extra_high: extraHigh !== null ? Math.round(extraHigh) : null,
         cost_per_extra: round(avg, 0), cost_per_extra_low_end: round(avgLow, 0), scale_factor: scale, next_tranche_cost: round(next, 0), cost_cap_inr: cap,
         evidence_ok: evidenceOk, evidence_gaps: evidence, decision, why,
         basis: 'Extra registrations = test people × (test rate − comparison rate). Expected extra attendees = extra registrations × show-up by status (A). Next-tranche cost = cost per extra ÷ scale factor (A).'
       };
     }).sort((x, y) => (x.rank || 99) - (y.rank || 99));
   }
-  function reserveLeft(ds) { return Math.max(0, (ds.event.reserve || 0) - ds.tables.campaigns.reduce((a, c) => a + (num(c.reserve_released_inr) || 0), 0)); }
+  function reserveReleased(ds, D) { let t = 0; ds.camps.forEach((c, id) => { t += campState(ds, id, D).released; }); return t; }
+  function reserveLeft(ds, D) { return Math.max(0, (ds.event.reserve || 0) - reserveReleased(ds, D || ds.event.end)); }
   function reservePlan(ds, D, assump) {
-    const rows = betRows(ds, D, assump).filter(r => r.decision === 'Scale').sort((a, b) => a.next_tranche_cost - b.next_tranche_cost);
-    let left = reserveLeft(ds); const out = [];
-    rows.forEach(r => { if (left <= 0 || r.reserve_released_inr > 0) return; const size = r.sure_lift_above_zero !== null && r.sure_lift_above_zero >= 0.9 ? 100000 : 50000; const amt = Math.min(size, left); left -= amt; out.push({ campaign_id: r.campaign_id, bet: r.bet, amount: amt, next_tranche_cost: r.next_tranche_cost, cap: r.cost_cap_inr, sure: r.sure_lift_above_zero, rule: size > 50000 ? 'Over ₹50k: 90%+ sure' : 'Up to ₹50k: 80%+ sure, 2 weeks, 300+ per group' }); });
-    return { reserve_total: ds.event.reserve || 0, reserve_left: reserveLeft(ds), suggestions: out, already_released: betRows(ds, D, assump).filter(r => r.reserve_released_inr > 0).map(r => ({ bet: r.bet, amount: r.reserve_released_inr })), rule: 'Money goes to the lowest next-tranche cost first, only to bets under their cap. Release size follows the evidence rule. One release per bet until its review.' };
+    const all = betRows(ds, D, assump), rows = all.filter(r => r.decision === 'Scale').sort((a, b) => a.next_tranche_cost - b.next_tranche_cost);
+    let left = reserveLeft(ds, D); const out = [];
+    rows.forEach(r => { if (left <= 0 || (r.last_release && daysBetween(r.last_release, D) < 13)) return; const size = r.sure_lift_above_zero !== null && r.sure_lift_above_zero >= 0.9 ? 100000 : 50000; const amt = Math.min(size, left); left -= amt; out.push({ campaign_id: r.campaign_id, bet: r.bet, amount: amt, next_tranche_cost: r.next_tranche_cost, cap: r.cost_cap_inr, sure: r.sure_lift_above_zero, gap_real: r.gap_real, rule: size > 50000 ? '₹1L release: gap High (90%+ likely real)' : '₹50k release: gap at least Medium, 2+ weeks, 300+ per group' }); });
+    const released = []; ds.camps.forEach((c, id) => { const st = campState(ds, id, D); if (st.released) released.push({ campaign_id: id, bet: c.campaign_name, amount: st.released, last: st.lastRelease }); });
+    return { reserve_total: ds.event.reserve || 0, reserve_left: reserveLeft(ds, D), suggestions: out, already_released: released, rule: 'Money goes to the bet whose next extra attendee is cheapest, only under its cap. ₹1L needs a High gap, ₹50k a Medium one. One release per bet until its review two weeks later.' };
   }
 
   /* ---------- flags: Watch / Warn / Act rules (thresholds editable) ---------- */
@@ -552,58 +656,75 @@
   function flags(ds, D, rulesIn, assump) {
     const R = Object.assign({}, DEFAULT_RULES, rulesIn || {}), out = [], min = R.min_people.value;
     const s = snapshot(ds, D), ended = D >= ds.event.eventEndDay, before = D < ds.event.eventStartDay;
-    const pct = v => v === null ? '–' : (v * 100).toFixed(1) + '%';
+    const pct = v => v === null ? '–' : Math.round(v * 100) + '%';
     const add = f => { if (f.level !== 'ok' && f.level !== 'none') out.push(f); };
-    // 1. pace / attainment
+    // 1. are we heading for the target?
+    if (!ended) {
+      const fc = forecast(ds, D, assump);
+      if (fc.verdict && fc.verdict !== 'Safe') add({ id: 'forecast-visitors', term: 'Outcome', level: fc.verdict === 'Off track' ? 'act' : 'warn', title: 'Attendee target: ' + (fc.verdict === 'Off track' ? 'off track' : 'at risk'),
+        reason: (fc.verdict === 'Off track' ? 'Most likely ' + nf(fc.likely) : 'With bad luck ' + nf(fc.bad)) + ' outside attendees vs the ' + nf(fc.target) + ' target', value: fc.likely,
+        evidence: 'Forecast: bad luck ' + nf(fc.bad) + ' · most likely ' + nf(fc.likely) + ' · good luck ' + nf(fc.good) + ' vs target ' + nf(fc.target) + '. ' + fc.basis,
+        matters: 'Attendees are the outcome we are judged on.', if_nothing: 'We land near the most likely number, ' + nf(fc.likely) + '.',
+        owner: 'Growth lead', action: 'Release reserve to the bet with the cheapest next attendee; push confirm-your-spot reminders.', trust: 'maybe' });
+    }
     pace(ds, D).forEach(p => {
       if (p.curve) {
-        if (before && p.level !== 'ok' && p.level !== 'none') {
-          const t = { watch: 'Registrations above base pace, below stretch', warn: 'Registrations below base pace', act: 'Registrations more than 15% below base pace' }[p.level];
-          const act = { watch: 'Find the lagging bet on the Bets page and fix it.', warn: "Lagging bet's owner fixes it this week.", act: 'Release reserve to the best bet by next-tranche cost; switch on paid reminders.' }[p.level];
-          add({ id: 'pace-registered', term: 'Register', level: p.level, title: t, value: p.vs_base, evidence: 'Week ' + p.week + ': ' + nf(p.actual) + ' outside registrations vs base pace ' + nf(p.base_pace) + (p.stretch_pace ? ' and stretch pace ' + nf(p.stretch_pace) : '') + ' (curve: ' + Math.round(p.expected_share * 100) + '% of final expected by now, A).', owner: 'Growth lead', action: act, trust: 'maybe' });
-        }
+        if (before && (p.level === 'warn' || p.level === 'act')) add({ id: 'pace-registered', term: 'Register', level: p.level, title: 'Registrations: below plan pace', reason: nf(p.actual) + ' registered; plan for this week ' + nf(p.base_pace), value: p.vs_base,
+          evidence: 'Week ' + p.week + ': ' + nf(p.actual) + ' outside registrations vs base pace ' + nf(p.base_pace) + (p.stretch_pace ? ' and stretch pace ' + nf(p.stretch_pace) : '') + ' (' + Math.round(p.expected_share * 100) + '% of final registrations expected by now).',
+          matters: 'Fewer sign-ups now means fewer attendees later.', if_nothing: 'The gap grows as late sign-ups follow the same pace.', owner: 'Growth lead', action: "Find the lagging bet and have its owner fix it this week.", trust: 'maybe' });
         return;
       }
       if (before && p.key !== 'visitors' && p.required_per_day) {
         const ratio = p.run_rate_7d / p.required_per_day;
-        add({ id: 'pace-' + p.key, term: p.key === 'identified' ? 'Reach' : 'Register', level: grade(ratio, R.pace_ratio), title: ({ identified: 'Identified people', registered: 'Registrations' })[p.key] + ' behind pace', value: round(ratio, 2), evidence: 'Last 7 days: ' + p.run_rate_7d + '/day. Needed: ' + p.required_per_day + '/day for ' + p.days_left + ' days to reach ' + nf(p.goal) + ' (now ' + nf(p.actual) + ').', owner: 'Growth lead', action: 'Find the campaign with the weakest recent run rate and shift effort or budget to the cheapest proven channel.', trust: 'proven' });
+        add({ id: 'pace-' + p.key, term: p.key === 'identified' ? 'Reach' : 'Register', level: grade(ratio, R.pace_ratio), title: ({ identified: 'People reached', registered: 'Registrations' })[p.key] + ': behind pace', reason: p.run_rate_7d + ' a day vs ' + p.required_per_day + ' needed', value: round(ratio, 2),
+          evidence: 'Last 7 days: ' + p.run_rate_7d + '/day. Needed: ' + p.required_per_day + '/day for ' + p.days_left + ' days to reach ' + nf(p.goal) + ' (now ' + nf(p.actual) + ').', matters: 'The goal needs a faster daily rate than we have.', if_nothing: 'We finish about ' + nf(p.actual + p.run_rate_7d * p.days_left) + ' of ' + nf(p.goal) + '.',
+          owner: 'Growth lead', action: 'Shift effort to the cheapest proven campaign.', trust: 'proven' });
       }
-      if (ended) add({ id: 'goal-' + p.key, term: 'Outcome', level: grade(p.attainment, R.attainment), title: ({ identified: 'Identified people', registered: 'Registrations', visitors: 'Verified visitors' })[p.key] + ' finished below goal', value: p.attainment, evidence: nf(p.actual) + ' of ' + nf(p.goal) + ' (' + pct(p.attainment) + ').', owner: 'Growth lead', action: 'Review which step lost the most people; carry the lesson into the next plan.', trust: 'proven' });
+      if (ended) add({ id: 'goal-' + p.key, term: 'Outcome', level: grade(p.attainment, R.attainment), title: ({ identified: 'People reached', registered: 'Registrations', visitors: 'Outside visitors' })[p.key] + ': below goal', reason: nf(p.actual) + ' of ' + nf(p.goal) + ' (' + pct(p.attainment) + ')', value: p.attainment,
+        evidence: nf(p.actual) + ' of ' + nf(p.goal) + '.', matters: 'This is the final result.', if_nothing: 'Carry the lesson into the next plan.', owner: 'Growth lead', action: 'Find the step that lost the most people and fix it next time.', trust: 'proven' });
     });
-    if (before) {
-      const pr = projection(ds, D, assump), g = s.target ? s.target.unique_external_visitors_goal : null;
-      if (g && pr.likely) add({ id: 'forecast-visitors', term: 'Show-up', level: grade(pr.likely / g, R.attainment), title: 'Forecast visitors below goal', value: round(pr.likely / g, 3), evidence: 'Forecast ' + nf(pr.low) + '–' + nf(pr.high) + ' (likely ' + nf(pr.likely) + ') vs goal ' + nf(g) + '. Basis: ' + pr.basis + '.', owner: 'Growth lead', action: 'Push confirmations and reminders to active registrants; check the campaigns with low confirmation.', trust: 'maybe' });
-    }
-    // 2. budget burn
+    // 2. budget
     const b = budget(ds, D);
     if (b.approved) {
-      if (b.spent > b.approved) add({ id: 'budget-over', term: 'Budget', level: 'act', title: 'Spend is above the approved budget', value: b.used, evidence: rs(b.spent) + ' spent vs ' + rs(b.approved) + ' approved.', owner: 'Growth lead', action: 'Freeze new spend and get approval before any further commitment.', trust: 'proven' });
-      else add({ id: 'budget-burn', term: 'Budget', level: grade(b.burn_vs_time, R.budget_burn, true), title: 'Budget is being spent faster than time passes', value: b.burn_vs_time, evidence: pct(b.used) + ' of budget used with ' + pct(b.time_elapsed) + ' of the campaign window gone.', owner: 'Growth lead', action: 'Check which campaigns are front-loading spend; hold back the reserve.', trust: 'proven' });
+      if (b.spent > b.approved) add({ id: 'budget-over', term: 'Budget', level: 'act', title: 'Budget: overspent', reason: rs(b.spent) + ' spent of ' + rs(b.approved), value: b.used, evidence: rs(b.spent) + ' spent vs ' + rs(b.approved) + ' approved.', matters: 'Spend beyond approval is not allowed.', if_nothing: 'Overspend grows.', owner: 'Growth lead', action: 'Freeze new spend until approved.', trust: 'proven' });
+      else add({ id: 'budget-burn', term: 'Budget', level: grade(b.burn_vs_time, R.budget_burn, true), title: 'Budget: spending fast', reason: pct(b.used) + ' spent with ' + pct(b.time_elapsed) + ' of the time gone', value: b.burn_vs_time, evidence: pct(b.used) + ' of the budget used with ' + pct(b.time_elapsed) + ' of the campaign window gone.', matters: 'Money spent early cannot follow what works later.', if_nothing: 'Less money left for the last, busiest weeks.', owner: 'Growth lead', action: 'Find who is front-loading spend; hold the reserve.', trust: 'proven' });
     }
-    // 3. per campaign
+    // 3. bets and campaigns
     const rows = campaignRows(ds, D, { assumptions: assump }).filter(r => r.campaign_id);
     const cap = A(assump, 'cost_cap');
-    betRows(ds, D, assump).forEach(b => {
-      const lv = { Stop: 'act', Change: 'warn', 'Too early': 'watch' }[b.decision]; if (!lv) return;
-      add({ id: 'bet-' + b.campaign_id, term: 'Bet', level: lv, title: b.bet + ': ' + (b.decision === 'Too early' ? 'too early to judge' : b.decision === 'Stop' ? 'no lift, stop rule' : 'cost above cap'), value: b.cost_per_extra, evidence: b.why + '. Test ' + (b.test_rate !== null ? pct(b.test_rate) + ' vs comparison ' + pct(b.comparison_rate) : nf(b.test_registered) + ' direct sign-ups') + ', ' + nf(b.expected_extra_attendees) + ' expected extra attendees (A).', owner: b.owner, action: b.decision === 'Too early' ? 'Keep the test running; no tranche money until the evidence rule is met.' : b.decision === 'Stop' ? 'Stop spending; move its budget to the best bet.' : 'Change the mechanic or cut cost; no tranche money while above cap.', trust: 'maybe' });
+    if (!ended) betRows(ds, D, assump).forEach(b => {
+      const lv = { Stop: 'act', Change: 'warn', 'Too early': 'watch' }[b.decision]; if (!lv || (ds.event.regOpens && D < ds.event.regOpens)) return;
+      const reason = b.decision === 'Too early' ? b.evidence_gaps[0] : b.decision === 'Stop' ? 'no clear gap over the comparison group' : rs(b.cost_per_extra) + ' per extra attendee; limit ' + rs(b.cost_cap_inr);
+      add({ id: 'bet-' + b.campaign_id, term: 'Bet', level: lv, title: b.bet + ': ' + (b.decision === 'Too early' ? 'too early to judge' : b.decision === 'Stop' ? 'not working' : 'costs too much'), reason, value: b.cost_per_extra,
+        evidence: b.why + '. ' + (b.test_rate !== null ? 'Test ' + pct(b.test_rate) + ' registered vs comparison ' + pct(b.comparison_rate) : nf(b.test_registered) + ' sign-ups (no comparison group)') + '; about ' + nf(b.expected_extra_attendees) + ' extra attendees (est.).',
+        matters: b.decision === 'Too early' ? 'Judging too soon can kill a good idea or fund a lucky one.' : b.decision === 'Stop' ? 'Money spent here brings no extra people.' : 'Each extra person costs more than we agreed to pay.',
+        if_nothing: b.decision === 'Too early' ? 'Nothing breaks; it gets no reserve money until the test is fair.' : 'We keep paying ' + rs(b.cost_per_extra) + ' for each extra person.',
+        owner: b.owner, action: b.decision === 'Too early' ? 'Keep the test running; no reserve money until it is fair.' : b.decision === 'Stop' ? 'Stop spending; move its budget to the best bet.' : 'Change the mechanic or cut its cost; no reserve money while above the limit.', trust: 'maybe' });
     });
     rows.forEach(r => {
-      if (r.kind === 'bet') return;
-      const base = ended ? r.visitors : r.expected_visitors;
-      const cost = ended ? r.cost_per_visitor : r.cost_per_expected_visitor;
-      if (base >= min && cost !== null) add({ id: 'cost-' + r.campaign_id, term: 'Cost', level: grade(cost / cap, R.cost_vs_cap, true), title: r.campaign + ': cost above cap', value: cost, evidence: rs(r.spend) + ' spent, ' + nf(base) + (ended ? ' verified visitors' : ' expected visitors (A)') + ' → ' + rs(cost) + ' each vs cap ' + rs(cap) + '.', owner: r.owner, action: 'Change: cut low-converting spend or move it to a cheaper campaign. Stop if it stays above cap after a fix.', trust: ended ? 'proven' : 'maybe' });
-      if (ended && r.registered >= min && s.showup !== null) add({ id: 'showup-' + r.campaign_id, term: 'Show-up', level: grade(s.showup - r.showup, R.showup_gap, true), title: r.campaign + ': show-up below average', value: r.showup, evidence: pct(r.showup) + ' of registrants came vs ' + pct(s.showup) + ' overall (' + nf(r.visitors_registered) + ' of ' + nf(r.registered) + ').', owner: r.owner, action: 'Add commitment steps for this audience (confirm step, group sign-up, reminders) or move budget to higher show-up channels.', trust: 'proven' });
-      if (!ended && r.active >= min) { const cr = r.confirmed / r.active, all = s.active ? s.status.confirmed / s.active : null; if (all !== null) add({ id: 'confirm-' + r.campaign_id, term: 'Show-up', level: grade(all - cr, R.showup_gap, true), title: r.campaign + ': few registrants confirmed', value: round(cr, 3), evidence: pct(cr) + ' of active registrants confirmed vs ' + pct(all) + ' overall.', owner: r.owner, action: 'Send a confirmation prompt to unconfirmed registrants from this campaign.', trust: 'maybe' }); }
+      if (r.kind === 'bet' || r.status === 'stopped') return;
+      const base = ended ? r.visitors : r.expected_visitors, cost = ended ? r.cost_per_visitor : r.cost_per_expected_visitor;
+      if (base >= min && cost !== null) add({ id: 'cost-' + r.campaign_id, term: 'Cost', level: grade(cost / cap, R.cost_vs_cap, true), title: r.campaign + ': costs too much', reason: rs(cost) + ' per ' + (ended ? '' : 'expected ') + 'attendee; limit ' + rs(cap), value: cost,
+        evidence: rs(r.spend) + ' spent, ' + nf(base) + (ended ? ' outside visitors' : ' expected attendees (est.)') + ' → ' + rs(cost) + ' each vs the ' + rs(cap) + ' limit.', matters: 'The same money brings more people elsewhere.', if_nothing: 'We keep paying ' + rs(cost) + ' for each person.',
+        owner: r.owner, action: 'Cut it to reveals and reminders only; move the rest to a cheaper campaign.', trust: ended ? 'proven' : 'maybe' });
+      if (ended && r.registered >= min && s.showup !== null) add({ id: 'showup-' + r.campaign_id, term: 'Show-up', level: grade(s.showup - r.showup, R.showup_gap, true), title: r.campaign + ': fewer registrants came', reason: pct(r.showup) + ' came vs ' + pct(s.showup) + ' overall', value: r.showup,
+        evidence: pct(r.showup) + ' of registrants came vs ' + pct(s.showup) + ' overall (' + nf(r.visitors_registered) + ' of ' + nf(r.registered) + ').', matters: 'Sign-ups that do not come cost money and bring no one.', if_nothing: 'Next year repeats it.', owner: r.owner, action: 'Add commitment steps (confirm, group sign-up, reminders) for this audience.', trust: 'proven' });
+      if (before && r.active >= min) { const cr = r.confirmed / r.active, all = s.active ? s.status.confirmed / s.active : null; if (all !== null) add({ id: 'confirm-' + r.campaign_id, term: 'Show-up', level: grade(all - cr, R.showup_gap, true), title: r.campaign + ': few have confirmed', reason: pct(cr) + ' have confirmed; ' + pct(all) + ' overall', value: round(cr, 3),
+        evidence: pct(cr) + ' of active registrants confirmed vs ' + pct(all) + ' overall.', matters: 'Confirmed people come about 75% of the time; unconfirmed ones far less.', if_nothing: 'Fewer of these sign-ups turn into attendees.', owner: r.owner, action: 'Send a confirm-your-spot reminder to its unconfirmed registrants.', trust: 'maybe' }); }
       const emailed = (s.iaPeopleByCamp[r.campaign_id + '|nurture_email_sent'] || new Set()).size;
-      if (emailed >= min) add({ id: 'optout-' + r.campaign_id, term: 'Reach (guardrail)', level: grade(r.opt_outs / emailed, R.opt_out, true), title: r.campaign + ': opt-outs rising', value: round(r.opt_outs / emailed, 3), evidence: nf(r.opt_outs) + ' of ' + nf(emailed) + ' emailed people opted out (' + pct(r.opt_outs / emailed) + ').', owner: r.owner, action: 'Reduce email frequency for this audience and stop messaging anyone who opted out.', trust: 'proven' });
-      if (r.registered >= min) add({ id: 'cancel-' + r.campaign_id, term: 'Register (guardrail)', level: grade(r.cancel_rate, R.cancel_rate, true), title: r.campaign + ': cancellations high', value: r.cancel_rate, evidence: nf(r.cancelled) + ' of ' + nf(r.registered) + ' registrations cancelled (' + pct(r.cancel_rate) + ').', owner: r.owner, action: 'Ask cancellers why (one-question survey) and check if the audience matches the event.', trust: 'maybe' });
+      if (!ended && emailed >= min) add({ id: 'optout-' + r.campaign_id, term: 'Reach (guardrail)', level: grade(r.opt_outs / emailed, R.opt_out, true), title: r.campaign + ': opt-outs rising', reason: pct(r.opt_outs / emailed) + ' of people emailed opted out; limit ' + pct(R.opt_out.warn), value: round(r.opt_outs / emailed, 3),
+        evidence: nf(r.opt_outs) + ' of ' + nf(emailed) + ' emailed people opted out.', matters: 'People who opt out can never be reminded again.', if_nothing: 'We lose the people we most need to remind before the fest.', owner: r.owner, action: 'At most one email a week; never email people who opted out.', trust: 'proven' });
+      if (r.registered >= min) add({ id: 'cancel-' + r.campaign_id, term: 'Register (guardrail)', level: grade(r.cancel_rate, R.cancel_rate, true), title: r.campaign + ': many cancel', reason: pct(r.cancel_rate) + ' cancelled; limit ' + pct(R.cancel_rate.warn), value: r.cancel_rate,
+        evidence: nf(r.cancelled) + ' of ' + nf(r.registered) + ' registrations cancelled.', matters: 'The audience may not match the fest.', if_nothing: 'Spend keeps buying sign-ups that cancel.', owner: r.owner, action: 'Ask cancellers why (one-question survey).', trust: 'maybe' });
     });
     // 4. walk-ins and gates
-    if (s.visitorCount >= min) add({ id: 'walkins', term: 'Walk-ins', level: grade(div(s.walkins, s.visitorCount), R.walkin_share, true), title: 'Many visitors came without registering', value: round(div(s.walkins, s.visitorCount), 3), evidence: nf(s.walkins) + ' of ' + nf(s.visitorCount) + ' visitors had no registration.', owner: 'Growth lead', action: 'Move the help desk to the gate and offer on-the-spot QR registration.', trust: 'proven' });
+    if (s.visitorCount >= min) add({ id: 'walkins', term: 'Walk-ins', level: grade(div(s.walkins, s.visitorCount), R.walkin_share, true), title: 'Walk-ins: many came unregistered', reason: pct(div(s.walkins, s.visitorCount)) + ' of visitors had not registered', value: round(div(s.walkins, s.visitorCount), 3),
+      evidence: nf(s.walkins) + ' of ' + nf(s.visitorCount) + ' visitors had no registration.', matters: 'Unregistered crowds are harder to plan for at the gate.', if_nothing: 'Gate queues and safety risk grow.', owner: 'Growth lead', action: 'Move the help desk to the gate with on-the-spot QR sign-up.', trust: 'proven' });
     const dsx = dayStats(ds, D, assump);
-    if (dsx.peak_hour && dsx.verified_entries) add({ id: 'gate-peak', term: 'Ceiling', level: grade(dsx.peak_vs_capacity, R.gate_load, true), title: 'Peak-hour arrivals near safe gate capacity', value: dsx.peak_vs_capacity, evidence: nf(dsx.peak_hour.entries) + ' entries at ' + dsx.peak_hour.hour + ' vs assumed safe capacity ' + dsx.gate_capacity_assumed + '/hour (A).', owner: 'Security / operations lead', action: 'Escalate to the security lead: spread arrivals with entry windows. Growth flags; security decides.', trust: 'maybe' });
+    if (dsx.peak_hour && dsx.verified_entries) add({ id: 'gate-peak', term: 'Ceiling', level: grade(dsx.peak_vs_capacity, R.gate_load, true), title: 'Gates: peak hour near capacity', reason: nf(dsx.peak_hour.entries) + ' entries in the busiest hour; safe limit ' + nf(dsx.gate_capacity_assumed), value: dsx.peak_vs_capacity,
+      evidence: nf(dsx.peak_hour.entries) + ' entries at ' + dsx.peak_hour.hour + ' vs a safe ' + nf(dsx.gate_capacity_assumed) + '/hour.', matters: 'Crowding at the gate is a safety risk.', if_nothing: 'Long queues; security may stop entry.', owner: 'Security / operations lead', action: 'Spread arrivals with entry windows. Growth flags; security decides.', trust: 'maybe' });
     // 5. data trust
-    const last = ds.lastDataDay.daily; if (before && last && daysBetween(last, D) > 2) out.push({ id: 'stale', term: 'Data', level: 'warn', title: 'Marketing data looks stale', value: daysBetween(last, D), evidence: 'Latest spend row is ' + last + ', ' + daysBetween(last, D) + ' days before the selected date.', owner: 'Growth lead', action: 'Check the data import before acting on spend signals.', trust: 'proven' });
+    const last = ds.lastDataDay.daily; if (before && last && daysBetween(last, D) > 2) out.push({ id: 'stale', term: 'Data', level: 'warn', title: 'Data: marketing numbers look old', reason: 'latest spend row is ' + daysBetween(last, D) + ' days old', value: daysBetween(last, D), evidence: 'Latest spend row is ' + last + '.', matters: 'Decisions on old numbers can be wrong.', if_nothing: 'Spend signals may mislead.', owner: 'Growth lead', action: 'Check the data import before acting on spend signals.', trust: 'proven' });
     const order = { act: 0, warn: 1, watch: 2 };
     return out.sort((a, b) => order[a.level] - order[b.level]);
   }
@@ -670,6 +791,6 @@
     return round(v, 6);
   }
 
-  const api = { betRows, reservePlan, reserveLeft, shareAt, weekOf, TABLES, SHEETS, KEYS, REQUIRED, DEFAULT_ASSUMPTIONS, DEFAULT_RULES, QUERY_TABLES, normTime, rowsToObjects, validate, applyEdits, build, snapshot, kpis, projection, campaignRows, funnel, anonFunnel, trend, pace, budget, dayStats, quality, explainChange, calibration, whatIf, flags, query, calculate, targetAt, addDays, daysBetween, campName, ownerName, round };
+  const api = { funnelView, forecast, checkpoints, campState, planDecisionsAt, reserveReleased, betRows, reservePlan, reserveLeft, shareAt, weekOf, TABLES, SHEETS, KEYS, REQUIRED, DEFAULT_ASSUMPTIONS, DEFAULT_RULES, QUERY_TABLES, normTime, rowsToObjects, validate, applyEdits, build, snapshot, kpis, projection, campaignRows, funnel, anonFunnel, trend, pace, budget, dayStats, quality, explainChange, calibration, whatIf, flags, query, calculate, targetAt, addDays, daysBetween, campName, ownerName, round };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GCEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);

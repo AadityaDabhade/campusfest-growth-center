@@ -11,36 +11,40 @@ The command center for **Challenge A: Attendee Growth**: a dashboard, a campaign
 
 | Screen | What it answers |
 |---|---|
-| **Overview** | Are we on track this week? The 4 numbers that matter, registrations vs plan pace, top 3 issues. |
-| **Funnel** | Where people drop: identified → started form → registered → confirmed → came. |
+| **Overview** | Are we winning? A verdict (Safe / At risk / Off track), the forecast as bad luck · most likely · good luck, the same 4 tiles every year, how the forecast changed week by week, what needs attention, and what we are doing about it. A timeline strip marks the three checkpoints: **week 10 review**, **fest eve check**, **result**. |
+| **Funnel** | The same 4 steps every year: reached → registered → confirmed → attended, with % of the step before, cost each, targets and 2025 at the same point. Plus gate capacity and registrations vs the plan. |
 | **Campaigns** | What each campaign spent and got, and a verdict: Scale / Keep / Change / Stop. Click a row to edit. |
-| **Bets** | For each of our 5 bets: test vs comparison, extra attendees, next-tranche cost vs cap, decision. Release reserve money from here. |
-| **Signals** | Every Watch / Warn / Act flag with evidence, owner and a suggested action. |
-| **Tasks** | Board of tasks with owners and due dates, plus the decision log with a before/after follow-up. |
-| **Data** | What each dataset is, what the words mean, import a workbook, undo edits, change assumptions and thresholds, test the analyst. |
-| **Ask the analyst** | Questions in plain English, answered from the app's own data. It can set up actions for you to confirm. |
+| **Bets** | For each of our 5 bets: test vs comparison, "Is the gap real?" (High / Medium / Low), extra attendees with a range, next extra attendee vs limit, decision. Release reserve money here, with its effect on the forecast. |
+| **Insights** | What is working, what is not, and why. Each item has a one-line reason with its number; "Why?" opens what we saw, why it matters, what we suggest and what happens if we do nothing. |
+| **Money** | The budget today (spent, planned, reserve), money in vs people out per campaign, and who got the reserve and why. |
+| **Tasks** | A simple table: edit title, owner, due date and status in place. Below it, the decision log with then / now numbers. |
+| **Data** | What each dataset is, the assumptions with their 2025 evidence, the words, edit history, change records for testing, and the analyst test set. |
+| **Understand this page** | On every page: five questions people ask about that page, answered with the live numbers. Every non-obvious number also has an ⓘ. |
+| **Ask the analyst** | Questions in plain English, answered from the app's own data. It can test "what if we release ₹1L to Group Pass?" and set up actions for you to confirm. |
 
-**The insight → action workflow to try:**
-1. Open **Bets**. Group Pass and Campus Outreach are cleared for reserve money.
-2. Click **Release ₹1L** on Group Pass. A panel shows exactly what will change; nothing changes until you confirm.
-3. Confirm. The bet's planned budget rises, reserve left drops to ₹2.5L, a task goes to the owner with a review date, and the decision is logged with today's "expected extra attendees".
-4. Or ask the analyst *"Which bet should get reserve money first?"*, then *"Do it"*. It opens the same confirmation panel.
-5. Follow-up: on **Tasks**, a decision becomes reviewable once the date passes its review date. To see one now: set **As of** to Week 8, act on a signal with a review date in week 10, switch back to Week 10, press **Review result**.
+**The insight → action workflow to try (2027, week 10):**
+1. **Overview** opens on the week 10 review: *At risk*, most likely about 5,000 outside attendees vs a 4,800 target; bad luck is below it.
+2. The review card lists what the data says to decide: release ₹1L each to Group Pass and Campus Outreach, fix Volunteer Corps and Paid Social, keep testing Day Scholars. It shows the effect: releasing ₹2L moves the forecast to *Safe*.
+3. Click **Release** on Group Pass. The panel shows exactly what will change, including the forecast before → after. Nothing changes until you confirm.
+4. Confirm. The bet's budget rises, reserve left drops to ₹2.5L, a task goes to the owner with a review date, the decision is logged, and the Overview verdict updates.
+5. Or ask the analyst *"What happens if we release ₹1L to Group Pass?"*, then *"Do it"*. It opens the same panel.
+6. Follow-up: move **As of** forward past the review date (week 12). The decision log compares the watched number then and now.
 
 ## 2. Data: what is sourced and what is simulated
 
 | Dataset (picker at the top) | Source | Use |
 |---|---|---|
-| **2027 plan (simulated)**, the default | **Simulated by us**: our 2027 plan running in New Delhi, stopped at week 10 of 15 (14 Mar 2027). Same tables and columns as the 2025 file. | Shows how the team would run the plan and make the week-10 money decisions. |
+| **2027 plan (simulated)**, the default | **Simulated by us**: our 2027 plan in New Delhi, all 15 weeks and both fest days, in the same tables and columns as the 2025 file. | Shows the system running the plan: forecasts, reviews, money decisions, fest-day checks. |
 | **2025 actual** | **Provided dataset** (CampusFest 2025). The original is never changed; your changes are saved as edits on top, and a button switches between "original" and "with your edits". | Ground truth and "changed data" testing for the dashboard and the analyst. |
-| **Imported file** | Any workbook with the same sheets | Testing on new data (kept for the visit only). |
 
-**In the 2027 data, from our plan:** campaigns and bets, owners, planned budgets (₹6.5L working + ₹3.5L reserve), cost caps, how well each bet scales, test designs, targets (base 5,760 registrations / ~4,800 outside attendees; stretch ~10,400 / ~9,000) and the registration pace curve.
-**Generated** (`scripts/gen27.py`, fixed seed): people, registrations, status changes, interactions and daily spend. These are not real records; every 2027 screen is labelled *simulated data*.
+**2027 timeline (from the plan):** week 1 starts Mon 16 Nov 2026 · exams in weeks 5–7 · registrations open Mon 4 Jan 2027 (week 8) · money reviews at weeks 10, 12 and 14 · fest Fri–Sat 26–27 Feb 2027 (week 15).
 
-The simulation is set to tell our plan's week-10 story: Outreach and Group Pass work and earn reserve money, Alumni works but its next rupee is above cap, Day Scholars is too early to judge, Volunteers and Paid Social cost too much.
+**From our plan:** campaigns and bets, owners, planned budgets (₹6.5L working + ₹3.5L reserve), cost limits, how well each bet scales, test designs, targets (outside attendees 4,800 base / 9,000 stretch; registrations 5,760 / 10,400) and the registration pace curve.
+**Generated** (`scripts/gen27.py`, fixed seed): people, registrations, status changes, interactions, daily spend and check-ins. Not real records; every 2027 screen says so.
 
-**Why week 10?** A live tool only has data up to today. We stop the simulation at week 10 because that's the plan's first money decision: stop rules fire and the first reserve release happens. You can step back through weeks 1–10 with **As of**; weeks 11–15 haven't happened yet.
+**Why "today" is week 10.** It is the plan's first money review: three weeks of registrations are enough to judge the bets. The dashboard opens there on purpose, to show the decision with only what was known that day. Dates after it are a **rehearsal**: one realistic run where the team takes the plan's decisions on time (`data27/plan_decisions.json`). It is not the best case: Day Scholar Turnout fails its test and is stopped at week 12, scaled bets do worse than their tests, no bet passes the money rule at weeks 12 and 14, so ₹1.5L of reserve stays unspent. Every later date shows a "Rehearsal" banner.
+
+**How the rehearsal ends:** 5,877 outside attendees vs the 4,800 target (2025: 2,050), inside the fest-eve forecast of 5,570–6,030. At week 10 the forecast if nothing changed was 4,390–5,540.
 
 ## 3. How the numbers are calculated
 
@@ -54,22 +58,24 @@ The simulation is set to tell our plan's week-10 story: Outreach and Group Pass 
 - Estimates that use assumptions are marked **est.**; every other number is counted from the records.
 
 **Key formulas:**
-- **Expected visitors (A)** = confirmed × 0.75 + interested × 0.40 + waitlisted × 0.25, plus a 6% walk-in share. Assumptions are editable in Data.
-- **2027 forecast (A)** = registrations so far ÷ share expected by this week on the pace curve, × show-up by status, + walk-ins.
+- **Expected attendees (est.)** = confirmed × 75% + unconfirmed × 55% (falling to 5% on fest eve) + waitlisted × 20%, plus a 6% walk-in share. Evidence from 2025: 73–77% of confirmed people came; 54–66% of people unconfirmed weeks out still came; 0 of 29 unconfirmed on fest eve came.
+- **Forecast (est.)** = final registrations × the chance each comes, by status, + walk-ins. Final registrations = registrations so far ÷ share expected by now on the plan curve (2025, with no curve: last 7 days' rate for the days left). The fest is played **1,000 times**, each input drawn from its range (Data page). **Bad luck** = only 1 in 10 runs did worse; **good luck** = only 1 in 10 did better. Fixed seed, so the same date gives the same numbers.
+- **Verdict:** Safe = even bad luck beats the target · At risk = most likely beats it, bad luck doesn't · Off track = most likely misses it.
+- **Effect of moving money (est.):** each released rupee buys extra attendees at the bet's next extra attendee cost, delivering 50–100% of it (most likely 80%).
 - **Pace levels:** at or above stretch pace = fine · above base = Watch · up to 15% below base = Warn · more = Act.
 - **Extra registrations (bets)** = people in test colleges × (test registration rate − comparison rate).
 - **Expected extra attendees (A)** = extra registrations × show-up by status of the test group.
-- **How sure** = probability the lift is above zero (two-group normal approximation).
+- **Is the gap real?** = how likely the test-vs-comparison gap is above zero (two-group normal approximation), shown as High (90%+), Medium (80–90%) or Low. Words, not exact percentages, to avoid false precision.
 - **Next-tranche cost (A)** = cost per extra attendee ÷ how well the bet scales (0.3–0.6 from the plan).
-- **Decision:** evidence rule not met → Too early · no lift → Stop · cost per extra above cap → Change · next-tranche cost under cap → Scale (gets reserve) · otherwise Keep.
-- **Evidence rule:** at least 2 weeks live, 300+ people per group, 80%+ sure. Releases above ₹50k need 90%+ (the two-segment check is confirmed by the owner, not automated).
+- **Decision:** test not fair yet (under 300 per group or under 2 weeks of registrations) → Too early · fair test but gap not 80%+ likely real → Stop · cost per extra above the limit → Change · next extra attendee also under the limit → Scale (gets reserve) · otherwise Keep.
+- **Reserve:** released only at the reviews, cheapest next extra attendee first. ₹1L needs a High gap; ₹50k needs Medium. One release per bet until its next review.
 - **Channel verdicts:** cost per expected (or verified) visitor vs a ₹250 cap; under half the cap with good show-up = Scale.
 
-**Checks:** `scripts/ref.py` computes the 2025 numbers independently in Python and `scripts/test.js` confirms the app's engine matches them at four dates (for example, 2,050 verified outside visitors, 2,800 registered, ₹2,74,000 spend, cost per visitor by campaign).
+**Checks:** `scripts/ref.py` computes the 2025 numbers independently in Python and `scripts/test.js` confirms the app's engine matches them at four dates (for example, 2,050 verified outside visitors, 2,800 registered, ₹2,74,000 spend, cost per visitor by campaign). `scripts/t27.js` checks the forecast: with every range shut it equals the plain formula, the same date always gives the same answer, the range narrows from week 10 to fest eve, the result lands inside the fest-eve range, and no data after the selected date leaks in.
 
 ## 4. AI Growth Analyst
 
-- **Grounded:** it has no data of its own. It calls the app's functions (the same engine as the screens): overview, campaigns, bets, funnel, trends, what changed between dates, signals, budget what-ifs, a safe query tool for unfamiliar questions, and an exact calculator.
+- **Grounded:** it has no data of its own. It calls the app's functions (the same engine as the screens): overview, the forecast (with "what if we move money"), campaigns, bets, funnel, trends, what changed between dates, signals, budget what-ifs, a safe query tool for unfamiliar questions, and an exact calculator.
 - **Honest:** it is told to say "not in the data" for things the data cannot answer (weather, revenue, competitors…), to tag evidence S or A, and to flag samples under 30 people.
 - **Connected to execution:** it can only *propose* actions (release reserve, pause, move budget, create a task…). The user confirms in the same panel the screens use.
 - **Changed data:** it always reads the dataset and date selected at the top, including your edits.
@@ -88,7 +94,7 @@ Local run: `npx vercel dev` (needs the same environment variable).
 
 ## 6. Tools used
 
-- Plain HTML, CSS and JavaScript (no framework). Charts are hand-drawn SVG. SheetJS (cdnjs) is used only for importing workbooks.
+- Plain HTML, CSS and JavaScript (no framework). Charts are hand-drawn SVG.
 - Vercel (Hobby, free) for hosting and the serverless functions. Google Gemini API and Groq API (both free tiers) for the hosted analyst.
 - Claude (Anthropic) for analysis, modelling, code and testing. Claude artifacts host the backup copy.
 - Python (pandas) and Node for the reference checks and the simulated data. Headless Chrome (Playwright) for UI tests on desktop and phone widths.
@@ -99,5 +105,6 @@ Local run: `npx vercel dev` (needs the same environment variable).
 - **Test vs comparison is an estimate, not proof.** Test colleges are picked by coin flip within matched pairs and money moves only when we are 80%+ sure, but hidden differences can remain.
 - **Saving:** on the hosted site, edits and tasks save in the reviewer's own browser (they survive a reload but are not shared between people). The Claude version shares them between signed-in viewers.
 - **Free AI tier:** Google limits requests per day and may use prompts to improve its products. All data here is simulated or provided, so nothing private is sent.
-- The 2027 "today" is the last day of the data, so follow-ups are shown by moving the date back and forward.
-- Imported files must use the same sheet names and columns as the 2025 workbook.
+- **The forecast is only as good as its ranges.** They come from 2025 and the plan; if 2027 behaves differently, the ranges are off. That is why it is re-read every week and checked at each review.
+- **2025 has no pace plan**, so its forecast just extends the last 7 days of sign-ups. It under-called 2025's late surge (at 33 days out it said 1,440–1,860; 2,050 came), which is why 2027 forecasts with a curve.
+- **Rehearsal tasks:** after week 10, plan tasks due before the viewed date are shown as done, because the rehearsal assumes the team works on time.

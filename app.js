@@ -10,33 +10,66 @@ const fmt = n => ok(n) ? Math.round(n).toLocaleString('en-IN') : '–';
 const inr = n => ok(n) ? '₹' + Math.round(n).toLocaleString('en-IN') : '–';
 const lakh = n => ok(n) ? '₹' + (n / 100000).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1') + 'L' : '–';
 const pct = (v, d = 0) => ok(v) ? (v * 100).toFixed(d) + '%' : '–';
-const sure = v => !ok(v) ? '–' : v >= 0.995 ? '99%+' : pct(v);
 const money = n => !ok(n) ? '–' : Math.abs(n) >= 100000 ? lakh(n) : Math.abs(n) >= 1000 ? '₹' + String(+(n / 1000).toFixed(1)) + 'k' : inr(n);
-const sgn = n => ok(n) ? (n > 0 ? '+' : '') + fmt(n) : '–';
 const dshort = d => d ? new Date(d.slice(0, 10) + 'T00:00:00Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '–';
 const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const clone = o => JSON.parse(JSON.stringify(o));
 const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 const EXTRA_OWNERS = { GL: 'Growth lead', SEC: 'Security / operations lead', CORE: 'Fest core team' };
-const VIEWS = { live27: { base: '27', label: '2027 plan (simulated)' }, orig25: { base: '25', label: '2025 actual (original)', locked: true }, edit25: { base: '25', label: '2025 actual (with your edits)' }, imported: { base: 'imp', label: 'Imported file' } };
+const VIEWS = { live27: { base: '27', label: '2027 plan (simulated)' }, orig25: { base: '25', label: '2025 actual (original)', locked: true }, edit25: { base: '25', label: '2025 actual (with your edits)' } };
 const DIRS = { '27': 'data27', '25': 'data' };
+const KEY = 'gc3.';
+/* 2025 facts used for the gate estimate: 1.59 entries per visitor, and the busiest hour took 24.5% of a day's entries (400 of ~1,630). */
+const ENTRIES_PER_VISITOR = 1.59, PEAK_HOUR_SHARE = 0.245;
 
-const S = {
-  raw: {}, details: [], cache: {}, ds: null, view: 'live27', asOf: null, edits: [], tasks: [], decisions: [], settings: { assump: {}, rules: {} },
-  importRaw: null, importName: '', page: 'overview', funnelCamp: 'all', store: 'local', readOnly: false, uid: null, pending: null, review: null, tests: {}, drawer: null
-};
+const S = { raw: {}, details: [], cache: {}, ds: null, view: 'live27', asOf: null, edits: [], tasks: [], decisions: [], settings: {}, page: 'overview', funnelCamp: 'all', store: 'local', readOnly: false, uid: null, pending: null, review: null, tests: {}, drawer: null, fc: {} };
 const baseOf = () => VIEWS[S.view].base;
-
-/* ---------- settings ---------- */
-function assump() { const a = clone(E.DEFAULT_ASSUMPTIONS); const o = S.settings.assump || {}; for (const k in o) if (a[k] && ok(Number(o[k]))) a[k].value = Number(o[k]); return a; }
-function rules() { const r = clone(E.DEFAULT_RULES); const o = S.settings.rules || {}; for (const k in o) if (r[k]) Object.assign(r[k], o[k]); return r; }
+const assump = () => clone(E.DEFAULT_ASSUMPTIONS);
+const rules = () => clone(E.DEFAULT_RULES);
 function owners() { return Object.assign({}, S.ds ? S.ds.owners : {}, EXTRA_OWNERS); }
 function ownerLabel(id) { return owners()[id] || id || 'Growth lead'; }
 const ended = () => S.asOf >= S.ds.event.eventEndDay;
+const started = () => S.asOf >= S.ds.event.eventStartDay;
 const before = () => S.asOf < S.ds.event.eventStartDay;
 const hasBets = () => S.ds.tables.campaigns.some(c => c.kind === 'bet');
+const sim = () => !!S.ds.event.today;
+const daysToFest = D => E.daysBetween(D || S.asOf, S.ds.event.eventStartDay);
+const daysTxt = n => n + (n === 1 ? ' day' : ' days');
+/* In the 2027 rehearsal (after "today"), plan tasks due before the viewed date count as done: the rehearsal assumes the team works on time. */
+const tStatus = t => sim() && t.source === 'plan' && t.status !== 'done' && S.asOf > S.ds.event.today && t.due && t.due < S.asOf ? 'done' : t.status;
 
-/* ---------- data ---------- */
+/* ---------- small UI pieces ---------- */
+const info = (t, left) => `<span class="i${left ? ' lft' : ''}" tabindex="0" role="note" aria-label="${esc(t)}" data-tip="${esc(t)}">i</span>`;
+const VCLS = { Safe: 'ok', Hit: 'ok', 'At risk': 'warn', 'Off track': 'act', Missed: 'act' };
+const pill = v => v ? `<span class="pill ${VCLS[v] || ''}">${esc(v)}</span>` : '';
+const kpi = (l, v, s, tip) => `<div class="kpi"><div class="l">${esc(l)}${tip ? info(tip) : ''}</div><div class="v">${esc(v)}</div><div class="s">${s || ''}</div></div>`;
+const explainBtn = () => `<button class="link" data-act="explain" type="button">Understand this page</button>`;
+function head(title, sub) { return `<div class="ph"><div><h1>${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}</div>${explainBtn()}</div>${rehearsal()}`; }
+function rehearsal() {
+  const t = S.ds.event.today; if (!t || S.asOf <= t) return '';
+  return `<div class="banner"><b>Rehearsal.</b> "Today" is the end of week 10 (${esc(dshort(t))}). Later dates show one simulated run where the team takes the plan's decisions on time. It is not the best case: one bet fails and ₹1.5L of reserve stays unspent.</div>`;
+}
+const VERB = { 'Too early': 'v-early', Stopped: 'v-Stop' };
+const vcls = v => VERB[v] || 'v-' + v;
+function todayReleases(D) {
+  if (!hasBets() || !before()) return [];
+  const bets = E.betRows(S.ds, D, assump());
+  return S.decisions.filter(d => (d.base || '25') === baseOf() && d.kind === 'release_reserve' && d.as_of === D).map(d => { const b = bets.find(x => x.campaign_id === d.campaign_id); return b && b.next_tranche_cost ? { amount: d.amount || 0, cost: b.next_tranche_cost, bet: b.bet } : null; }).filter(x => x && x.amount > 0);
+}
+function fcAt(D, extra) {
+  const tr = todayReleases(D); if (tr.length) extra = tr.map(x => ({ amount: x.amount, cost: x.cost })).concat(extra || []);
+  const k = S.view + '|' + D + (extra ? JSON.stringify(extra) : '');
+  if (!S.fc[k]) S.fc[k] = E.forecast(S.ds, D, assump(), extra ? { extra } : undefined);
+  return S.fc[k];
+}
+function ly() { // 2025 at the same number of days before its fest (2027 view only)
+  const r = S.raw['25']; if (!r || !sim()) return null;
+  S.cache.ly = S.cache.ly || E.build(r, { details: S.details, label: '2025 actual' });
+  const d = S.cache.ly, D = before() ? E.addDays(d.event.eventStartDay, -daysToFest()) : started() && !ended() ? d.event.eventStartDay : d.event.end;
+  return { ds: d, D, k: E.kpis(d, D, assump()), f: E.funnelView(d, D, assump()) };
+}
+
+/* ---------- settings-free data handling ---------- */
 async function loadBase(b) {
   if (S.raw[b]) return;
   const raw = {};
@@ -48,48 +81,43 @@ async function loadBase(b) {
 function editsFor(b) { return S.edits.filter(e => !e.undone && (e.base || '25') === b).slice().sort((a, c) => (a.at || '').localeCompare(c.at || '')); }
 function rebuild(keepDate) {
   const v = S.view, b = baseOf();
-  if (v === 'imported' && S.importRaw) S.ds = E.build(S.importRaw, { label: 'Imported: ' + S.importName });
-  else if (v === 'orig25') { S.cache.orig25 = S.cache.orig25 || E.build(S.raw['25'], { details: S.details, label: VIEWS.orig25.label }); S.ds = S.cache.orig25; }
+  if (v === 'orig25') { S.cache.orig25 = S.cache.orig25 || E.build(S.raw['25'], { details: S.details, label: VIEWS.orig25.label }); S.ds = S.cache.orig25; }
   else { const ed = editsFor(b); S.ds = E.build(E.applyEdits(S.raw[b], ed), { details: b === '25' ? S.details : [], label: VIEWS[v].label }); }
+  S.fc = {};
   const ev = S.ds.event;
-  if (!keepDate || !S.asOf || S.asOf < ev.start || S.asOf > ev.end) S.asOf = ev.end;
+  if (!keepDate || !S.asOf || S.asOf < ev.start || S.asOf > ev.end) S.asOf = ev.today || ev.end;
   syncBar();
 }
 function dateOptions() {
-  const ds = S.ds, ev = ds.event, out = [];
-  if (ev.planStart) {
-    for (let w = 1; ; w++) { const d = E.addDays(ev.planStart, 7 * w - 1); if (d > ev.end) break; out.push([d, 'Week ' + w + ' · ' + dshort(d)]); }
-    if (!out.length || out[out.length - 1][0] !== ev.end) out.push([ev.end, 'Week ' + E.weekOf(ds, ev.end) + ' · ' + dshort(ev.end)]);
-    if (ev.simulated) out[out.length - 1][1] += ' (today)';
-  } else {
-    let w = 1; for (let d = E.addDays(ev.start, 6); d < ev.eventStartDay; d = E.addDays(d, 7), w++) out.push([d, 'Week ' + w + ' · ' + dshort(d)]);
-    out.push([E.addDays(ev.eventStartDay, -1), 'Day before the event · ' + dshort(E.addDays(ev.eventStartDay, -1))]);
-    out.push([ev.eventStartDay, 'Event day 1 · ' + dshort(ev.eventStartDay)]);
-    if (ev.eventEndDay !== ev.eventStartDay) out.push([ev.eventEndDay, 'Event day 2 · ' + dshort(ev.eventEndDay)]);
-    if (ev.end > ev.eventEndDay) out.push([ev.end, 'Final · ' + dshort(ev.end)]);
-  }
-  const seen = new Set(), list = out.filter(o => !seen.has(o[0]) && seen.add(o[0]));
+  const ds = S.ds, ev = ds.event, cp = E.checkpoints(ds), out = [];
+  const eve = cp.eve, start = ev.planStart || ev.start;
+  for (let w = 1; ; w++) { const d = E.addDays(start, 7 * w - 1); if (d >= eve) break; let l = 'Week ' + w + ' · ' + dshort(d); if (d === ev.today) l += ' · today, review'; out.push([d, l]); }
+  if (!ev.today) out.push([cp.review, 'Review point · ' + dshort(cp.review) + ' (33 days out)']);
+  out.push([eve, 'Fest eve · ' + dshort(eve)]);
+  out.push([ev.eventStartDay, 'Fest day 1 · ' + dshort(ev.eventStartDay)]);
+  if (ev.eventEndDay !== ev.eventStartDay) out.push([ev.eventEndDay, 'Fest day 2 · ' + dshort(ev.eventEndDay)]);
+  if (ev.end > ev.eventEndDay) out.push([ev.end, 'Result · ' + dshort(ev.end)]);
+  const seen = new Set(), list = out.filter(o => !seen.has(o[0]) && seen.add(o[0])).sort((a, b) => a[0].localeCompare(b[0]));
   if (!seen.has(S.asOf)) { list.push([S.asOf, dshort(S.asOf)]); list.sort((a, b) => a[0].localeCompare(b[0])); }
-  return list.reverse();
+  return list;
 }
 function syncBar() {
-  const ev = S.ds.event;
-  { const o = dateOptions(); $('#prevWk').disabled = S.asOf === o[o.length - 1][0]; $('#nextWk').disabled = S.asOf === o[0][0]; }
-  $('#asOf').innerHTML = dateOptions().map(([d, l]) => `<option value="${d}" ${d === S.asOf ? 'selected' : ''}>${esc(l)}</option>`).join('');
-  const sel = $('#dsSel'); sel.value = S.view === 'live27' ? 'live27' : S.view === 'imported' ? 'imported' : '25';
-  $('#dsSel option[value=imported]').hidden = !S.importRaw;
+  const ev = S.ds.event, o = dateOptions();
+  $('#prevWk').disabled = S.asOf === o[0][0]; $('#nextWk').disabled = S.asOf === o[o.length - 1][0];
+  $('#asOf').innerHTML = o.map(([d, l]) => `<option value="${d}" ${d === S.asOf ? 'selected' : ''}>${esc(l)}</option>`).join('');
+  $('#dsSel').value = S.view === 'live27' ? 'live27' : '25';
   const n25 = editsFor('25').length, tg = $('#origToggle');
   tg.hidden = !(S.view === 'orig25' || S.view === 'edit25') || !n25;
   tg.textContent = S.view === 'edit25' ? 'With your ' + n25 + ' edit' + (n25 > 1 ? 's' : '') + ' · show original' : 'Original · show your edits';
   $('#evname').textContent = ev.name + (ev.city ? ', ' + ev.city : '');
   $('#navBets').hidden = !hasBets();
-  $('#navEvent').hidden = !S.ds.tables.checkins.length;
-  const fl = E.flags(S.ds, S.asOf, rules(), assump()), n = groupFlags(fl).filter(g => g.level !== 'watch').length;
+  $('#navEvent').hidden = !(S.asOf >= ev.eventStartDay && S.ds.tables.checkins.length);
+  const n = groupFlags(E.flags(S.ds, S.asOf, rules(), assump())).filter(g => g.level !== 'watch').length;
   $('#sigCount').hidden = !n; $('#sigCount').textContent = n;
   $('#saveState').textContent = { local: 'Your changes save in this browser.', loading: 'Loading saved changes…', slow: 'Saved changes not reachable yet.', saved: 'Changes saved and shared.', error: 'Saving unavailable: kept in this browser.' }[S.store] + (S.readOnly ? ' View-only.' : '');
 }
 
-/* ---------- saving: shared db when signed in, this browser otherwise ---------- */
+/* ---------- saving: shared db when signed in to Claude, this browser otherwise ---------- */
 const Store = {
   db: null,
   async init() {
@@ -100,12 +128,14 @@ const Store = {
     this.db = db; S.store = 'loading'; syncBar();
     const timer = setTimeout(() => { if (S.store === 'loading') { S.store = 'slow'; syncBar(); } }, 10000);
     const live = () => { clearTimeout(timer); if (S.store !== 'error') S.store = 'saved'; };
-    ['edits', 'tasks', 'decisions'].forEach(c => db.collection(c).onSnapshot(snap => { S[c] = snap.docs.map(d => d.data()); if (!snap.metadata.fromCache) live(); onData(c); }, () => { clearTimeout(timer); S.store = 'error'; syncBar(); }));
-    db.doc('settings/main').onSnapshot(d => { S.settings = d.exists ? clone(d.data()) : {}; S.settings.assump = S.settings.assump || {}; S.settings.rules = S.settings.rules || {}; onData('settings'); }, () => {});
+    let seeded = false;
+    ['edits', 'tasks', 'decisions'].forEach(c => db.collection(c).onSnapshot(snap => { S[c] = snap.docs.map(d => d.data()); if (!snap.metadata.fromCache) live(); if (c === 'tasks' && !seeded && !snap.metadata.fromCache) { seeded = true; this.seedShared(); } onData(c); }, () => { clearTimeout(timer); S.store = 'error'; syncBar(); }));
   },
-  loadLocal() { try { ['edits', 'tasks', 'decisions'].forEach(c => { S[c] = JSON.parse(localStorage.getItem('gc2.' + c) || '[]'); }); S.settings = JSON.parse(localStorage.getItem('gc2.settings') || '{"assump":{},"rules":{}}'); } catch (e) {} },
-  async seedLocal() { try { if (localStorage.getItem('gc2.seeded')) return; const seed = await (await fetch('data27/tasks.json')).json(); const have = new Set(S.tasks.map(t => t.id)); S.tasks = S.tasks.concat(seed.filter(t => !have.has(t.id))); localStorage.setItem('gc2.seeded', '1'); this.saveLocal(); } catch (e) {} },
-  saveLocal() { try { ['edits', 'tasks', 'decisions'].forEach(c => localStorage.setItem('gc2.' + c, JSON.stringify(S[c]))); localStorage.setItem('gc2.settings', JSON.stringify(S.settings)); } catch (e) {} },
+  async seedTasks() { try { return await (await fetch('data27/tasks.json')).json(); } catch (e) { return []; } },
+  async seedShared() { if (S.readOnly || S.tasks.some(t => (t.base || '') === '27')) return; for (const t of await this.seedTasks()) await this.put('tasks', t); },
+  loadLocal() { try { ['edits', 'tasks', 'decisions'].forEach(c => { S[c] = JSON.parse(localStorage.getItem(KEY + c) || '[]'); }); } catch (e) {} },
+  async seedLocal() { try { if (localStorage.getItem(KEY + 'seeded')) return; const seed = await this.seedTasks(); const have = new Set(S.tasks.map(t => t.id)); S.tasks = S.tasks.concat(seed.filter(t => !have.has(t.id))); localStorage.setItem(KEY + 'seeded', '1'); this.saveLocal(); } catch (e) {} },
+  saveLocal() { try { ['edits', 'tasks', 'decisions'].forEach(c => localStorage.setItem(KEY + c, JSON.stringify(S[c]))); } catch (e) {} },
   async put(coll, obj) {
     obj = clone(obj); const list = S[coll].slice(); const i = list.findIndex(x => x.id === obj.id); if (i >= 0) list[i] = obj; else list.push(obj); S[coll] = list;
     if (this.db && !S.readOnly) {
@@ -113,13 +143,11 @@ const Store = {
       catch (e) { if (e && e.code === 'invalid_argument') S.readOnly = true; toast(e && e.code === 'quota_exceeded' ? 'Storage is full: delete old tasks or edits.' : 'Not saved to the shared copy. Kept in this browser.'); this.saveLocal(); }
     } else this.saveLocal();
   },
-  async remove(coll, id) { S[coll] = S[coll].filter(x => x.id !== id); if (this.db && !S.readOnly) { try { await this.db.collection(coll).doc(id).delete(); } catch (e) { toast('Could not delete in the shared copy.'); } } else this.saveLocal(); },
-  async putSettings() { if (this.db && !S.readOnly) { try { await this.db.doc('settings/main').set(clone(S.settings)); } catch (e) { toast('Settings not saved to the shared copy.'); } } else this.saveLocal(); }
+  async remove(coll, id) { S[coll] = S[coll].filter(x => x.id !== id); if (this.db && !S.readOnly) { try { await this.db.collection(coll).doc(id).delete(); } catch (e) { toast('Could not delete in the shared copy.'); } } else this.saveLocal(); }
 };
-function onData(c) { if ((c === 'edits' || c === 'settings') && S.raw[baseOf()]) rebuild(true); render(); }
+function onData(c) { if (c === 'edits' && S.raw[baseOf()]) rebuild(true); render(); }
 
 async function commitEdit(type, payload, note) {
-  if (S.view === 'imported') { toast('Imported files are read-only.'); return null; }
   if (S.view === 'orig25') { S.view = 'edit25'; toast('The 2025 original stays locked. Your change is saved as an edit on top of it.'); }
   const e = { id: newId('ED'), base: baseOf(), type, payload, note: note || '', at: new Date().toISOString(), as_of: S.asOf, by: S.uid || 'this browser', undone: false };
   await Store.put('edits', e); rebuild(true); render(); return e;
@@ -134,26 +162,31 @@ function toast(msg, undo) {
   clearTimeout(toastT); toastT = setTimeout(() => { t.className = ''; }, undo ? 9000 : 4500);
 }
 
-/* ---------- chart ---------- */
+/* ---------- charts ---------- */
 let observers = [];
 function niceStep(v) { if (!(v > 0)) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
 function kfmt(v) { const t = (x, d) => String(+x.toFixed(d)); return v >= 100000 ? t(v / 100000, 2) + 'L' : v >= 1000 ? t(v / 1000, 1) + 'k' : t(v, 1); }
 function mount(id, draw) { const s = document.getElementById(id); if (!s) return; const ro = new ResizeObserver(() => { try { draw(s); } catch (e) { console.error(e); } }); ro.observe(s); observers.push(ro); }
+function axes(W, H, m, mx, n, xl, X) {
+  const ih = H - m.t - m.b, st = niceStep(mx / 4), nt = Math.max(1, Math.ceil(mx * 1.05 / st)), ym = st * nt, Y = v => m.t + ih - (v / ym) * ih; let g = '';
+  for (let k = 0; k <= nt; k++) { const y = Y(st * k); g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="#eceef0"/><text x="${m.l - 6}" y="${y + 4}" text-anchor="end">${esc(kfmt(st * k))}</text>`; }
+  const ticks = Math.min(n, W < 520 ? 3 : 7); for (let k = 0; k < ticks; k++) { const i = ticks > 1 ? Math.round(k * (n - 1) / (ticks - 1)) : 0; g += `<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? 'start' : k === ticks - 1 ? 'end' : 'middle'}">${esc(xl(i))}</text>`; }
+  return { g, Y };
+}
 function lineChart(s, cfg) {
   const W = s.clientWidth, H = s.clientHeight; if (!W || !H) return;
-  const m = { l: 42, r: 12, t: 12, b: 24 }, iw = W - m.l - m.r, ih = H - m.t - m.b, n = cfg.x.length;
-  let mx = 0; cfg.series.forEach(se => se.values.forEach(v => { if (ok(v) && v > mx) mx = v; }));
-  const st = niceStep(mx / 4), nt = Math.max(1, Math.ceil(mx * 1.03 / st)), ym = st * nt;
-  const X = i => m.l + (n > 1 ? i / (n - 1) : 0) * iw, Y = v => m.t + ih - (v / ym) * ih; let g = '';
-  for (let k = 0; k <= nt; k++) { const y = Y(st * k); g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="#eceef0"/><text x="${m.l - 6}" y="${y + 4}" text-anchor="end">${esc(kfmt(st * k))}</text>`; }
-  const ticks = W < 520 ? 3 : 6; for (let k = 0; k < ticks; k++) { const i = Math.round(k * (n - 1) / (ticks - 1)); g += `<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? 'start' : k === ticks - 1 ? 'end' : 'middle'}">${esc(dshort(cfg.x[i]))}</text>`; }
-  if (ok(cfg.marker)) { const x = X(cfg.marker), right = cfg.marker > n * 0.75; g += `<line x1="${x}" x2="${x}" y1="${m.t}" y2="${m.t + ih}" stroke="#111418" stroke-dasharray="2 3"/><text x="${x + (right ? -6 : 6)}" y="${m.t + 10}" text-anchor="${right ? 'end' : 'start'}" style="fill:#111418">${esc(cfg.markerLabel || 'today')}</text>`; }
-  cfg.series.forEach(se => { let d = '', pen = false; se.values.forEach((v, i) => { if (!ok(v)) { pen = false; return; } d += (pen ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); pen = true; }); g += `<path d="${d}" fill="none" stroke="${se.color}" stroke-width="${se.w || 2}" ${se.dash ? `stroke-dasharray="${se.dash}"` : ''} stroke-linejoin="round"/>`; });
+  const m = { l: 44, r: 12, t: 12, b: 24 }, iw = W - m.l - m.r, n = cfg.x.length;
+  let mx = 0; cfg.series.forEach(se => se.values.forEach(v => { if (ok(v) && v > mx) mx = v; })); (cfg.bands || []).forEach(b => b.hi.forEach(v => { if (ok(v) && v > mx) mx = v; }));
+  const X = i => m.l + (n > 1 ? i / (n - 1) : 0.5) * iw, A = axes(W, H, m, mx, n, i => cfg.xl ? cfg.xl(cfg.x[i]) : dshort(cfg.x[i]), X), Y = A.Y; let g = A.g;
+  (cfg.bands || []).forEach(b => { const pts = []; b.hi.forEach((v, i) => { if (ok(v)) pts.push([X(i), Y(v)]); }); const lo = []; b.lo.forEach((v, i) => { if (ok(v)) lo.push([X(i), Y(v)]); }); if (pts.length) g += `<path d="M${pts.map(p => p.join(' ')).join('L')}L${lo.reverse().map(p => p.join(' ')).join('L')}Z" fill="${b.color}" opacity=".16"/>`; });
+  if (ok(cfg.marker)) { const x = X(cfg.marker), right = cfg.marker > n * 0.75; g += `<line x1="${x}" x2="${x}" y1="${m.t}" y2="${H - m.b}" stroke="#111418" stroke-dasharray="2 3"/><text x="${x + (right ? -6 : 6)}" y="${m.t + 10}" text-anchor="${right ? 'end' : 'start'}" style="fill:#111418">${esc(cfg.markerLabel || 'today')}</text>`; }
+  cfg.series.forEach(se => { let d = '', pen = false; se.values.forEach((v, i) => { if (!ok(v)) { pen = false; return; } d += (pen ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); pen = true; }); g += `<path d="${d}" fill="none" stroke="${se.color}" stroke-width="${se.w || 2}" ${se.dash ? `stroke-dasharray="${se.dash}"` : ''} stroke-linejoin="round"/>`; if (se.label) { const li = se.values.length - 1; if (ok(se.values[li])) g += `<text x="${W - m.r}" y="${Y(se.values[li]) - 5}" text-anchor="end" style="fill:${se.color}">${esc(se.label)}</text>`; } if (se.dots) se.values.forEach((v, i) => { if (ok(v)) g += `<circle cx="${X(i)}" cy="${Y(v)}" r="3.2" fill="${se.color}"/>`; }); });
+  (cfg.points || []).forEach(p => { g += `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="5" fill="${p.color}"/><text x="${X(p.i) - 8}" y="${Y(p.v) - 9}" text-anchor="end" style="fill:${p.color};font-weight:600">${esc(p.label)}</text>`; });
   s.innerHTML = g;
 }
 function colChart(s, cfg) {
   const W = s.clientWidth, H = s.clientHeight; if (!W || !H) return;
-  const m = { l: 38, r: 10, t: 12, b: 22 }, iw = W - m.l - m.r, ih = H - m.t - m.b, n = cfg.values.length;
+  const m = { l: 40, r: 10, t: 12, b: 22 }, iw = W - m.l - m.r, ih = H - m.t - m.b, n = cfg.values.length;
   const mx = Math.max(cfg.cap || 0, ...cfg.values, 1), st = niceStep(mx / 4), nt = Math.max(1, Math.ceil(mx * 1.05 / st)), ym = st * nt, Y = v => m.t + ih - v / ym * ih, bw = iw / n; let g = '';
   for (let k = 0; k <= nt; k++) { const y = Y(st * k); g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="#eceef0"/><text x="${m.l - 6}" y="${y + 4}" text-anchor="end">${esc(kfmt(st * k))}</text>`; }
   cfg.values.forEach((v, i) => { g += `<rect x="${m.l + i * bw + bw * .15}" y="${Y(v)}" width="${Math.max(1, bw * .7)}" height="${Math.max(0, m.t + ih - Y(v))}" fill="${cfg.cap && v >= cfg.cap * 0.8 ? '#c8281e' : '#111418'}"><title>${esc(cfg.labels[i] + ': ' + fmt(v))}</title></rect>`; });
@@ -162,9 +195,7 @@ function colChart(s, cfg) {
   s.innerHTML = g;
 }
 
-/* ---------- shared bits ---------- */
-const tag = t => t === 'A' ? '<span class="tag" title="Estimate: uses assumptions you can change in Data">est.</span>' : '';
-const kpi = (l, v, s, t) => `<div class="kpi"><div class="l">${esc(l)}${t ? tag(t) : ''}</div><div class="v">${esc(v)}</div><div class="s">${esc(s || '')}</div></div>`;
+/* ---------- flags ---------- */
 function openTaskFor(fid) { return S.tasks.find(t => t.flag_id === fid && t.status !== 'done' && (t.base || '25') === baseOf()); }
 const LV = { act: 0, warn: 1, watch: 2 };
 function groupFlags(fl) {
@@ -172,151 +203,287 @@ function groupFlags(fl) {
   fl.forEach(f => { const i = f.title.indexOf(':'), subj = i > 0 ? f.title.slice(0, i) : f.title, issue = i > 0 ? f.title.slice(i + 1).trim() : ''; if (!m.has(subj)) m.set(subj, { subj, level: f.level, items: [] }); const g = m.get(subj); g.items.push(Object.assign({ issue }, f)); if (LV[f.level] < LV[g.level]) g.level = f.level; });
   const out = Array.from(m.values()); out.forEach(g => g.items.sort((a, b) => LV[a.level] - LV[b.level])); return out.sort((a, b) => LV[a.level] - LV[b.level]);
 }
-function actButtons(f) {
+function actButtons(f, why) {
   const t = openTaskFor(f.id);
-  return `<div class="row">${t ? `<span class="note">Task open: ${esc(ownerLabel(t.owner))}, due ${esc(dshort(t.due))}</span>` : `<button class="btn sm" data-act="flag" data-id="${esc(f.id)}" type="button">Act on this</button>`}<button class="btn ghost sm" data-act="ask" data-q="${esc('Why is this flagged: "' + f.title + '"? What should we do?')}" type="button">Ask why</button></div>`;
+  return `<div class="row">${t ? `<span class="note">Task open: ${esc(ownerLabel(t.owner))}, due ${esc(dshort(t.due))}</span>` : `<button class="btn sm" data-act="flag" data-id="${esc(f.id)}" type="button">Act on this</button>`}${why ? `<button class="btn ghost sm" data-act="flagd" data-id="${esc(f.id)}" type="button">Why?</button>` : `<button class="btn ghost sm" data-act="ask" data-q="${esc('Why is this flagged: "' + f.title + '"? What should we do?')}" type="button">Ask the analyst</button>`}</div>`;
 }
-function groupRow(g, full) {
-  const top = g.items[0], issues = g.items.map(x => x.issue).filter(Boolean);
-  if (!full) return `<div class="flag"><div class="t"><span class="lvl ${g.level}">${g.level}</span>${esc(g.subj)}</div><div class="e">${esc(issues.length ? issues.join(' · ') : top.evidence)}</div>${actButtons(top)}</div>`;
-  return `<div class="flag"><div class="t"><span class="lvl ${g.level}">${g.level}</span>${esc(g.subj)}</div>${g.items.map(f => `<div style="margin:6px 0 10px"><div class="e"><b>${esc(f.issue || f.title)}</b> · ${esc(f.evidence)}<br>Owner: ${esc(f.owner)} · Suggested: ${esc(f.action)}</div>${actButtons(f)}</div>`).join('')}</div>`;
+function groupRow(g) {
+  const top = g.items[0];
+  return `<div class="flag"><div class="t"><span class="lvl ${g.level}">${g.level}</span>${esc(g.subj)}</div>${g.items.slice(0, 3).map(f => `<div class="e">${esc(f.reason)}</div>`).join('')}${actButtons(top, true)}</div>`;
+}
+function flagDetail(f) {
+  return `<p><span class="lvl ${f.level}">${f.level}</span> <b>${esc(f.title)}</b></p>
+  <dl class="qa"><dt>What we saw</dt><dd>${esc(f.evidence)}</dd><dt>Why it matters</dt><dd>${esc(f.matters)}</dd><dt>What we suggest</dt><dd>${esc(f.action)} <span class="note">Owner: ${esc(f.owner)}</span></dd><dt>If we do nothing</dt><dd>${esc(f.if_nothing)}</dd></dl>
+  <p class="note">${f.trust === 'proven' ? 'Counted from records.' : 'Uses an estimate (est.), so treat it as a strong hint, not proof.'}</p>${actButtons(f, false)}`;
 }
 function campOptions(sel, all, filter) { return (all ? '<option value="all">All campaigns</option>' : '') + Array.from(S.ds.camps.values()).filter(c => !filter || filter(c)).map(c => `<option value="${esc(c.campaign_id)}" ${c.campaign_id === sel ? 'selected' : ''}>${esc(c.campaign_name)}</option>`).join(''); }
 function ownerOptions(sel) { const o = owners(); return Object.keys(o).map(k => `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(o[k])}</option>`).join(''); }
 function verdict(r, end, overall, cap, min, bets) {
   if (!r.campaign_id) return ['', ''];
+  if (r.status === 'stopped') return ['Stopped', 'Stopped at a review'];
   if (r.status === 'paused') return ['Keep', 'Paused'];
-  if (r.kind === 'bet') { const b = bets.find(x => x.campaign_id === r.campaign_id); return b ? [b.decision, 'Judged on test vs comparison'] : ['', '']; }
+  if (r.kind === 'bet') { const b = bets.find(x => x.campaign_id === r.campaign_id); return b ? [b.decision, BET_NOTE[b.decision]] : ['', '']; }
   const base = end ? r.visitors : r.expected_visitors, cost = end ? r.cost_per_visitor : r.cost_per_expected_visitor;
   if (base < min || !ok(cost)) return ['Too early', 'Under ' + min + ' people'];
-  if (cost > 1.5 * cap) return ['Stop', 'Far above cap'];
-  if (cost > cap) return ['Change', 'Above ' + inr(cap) + ' cap'];
-  if (cost <= 0.5 * cap && (!end || r.showup >= overall)) return ['Scale', 'Cheap, people show up'];
-  return ['Keep', 'Within cap'];
+  if (cost > 1.5 * cap) return ['Stop', 'Far above the limit'];
+  if (cost > cap) return ['Change', 'Above the ' + inr(cap) + ' limit'];
+  if (cost <= 0.5 * cap && (!end || r.showup >= overall)) return ['Scale', 'Cheap, and people come'];
+  return ['Keep', 'Under the limit'];
 }
-const vcls = v => v === 'Too early' ? 'v-early' : 'v-' + v;
+const BET_NOTE = { Scale: 'Ready for reserve money', Keep: 'Works; the next rupee costs too much', Change: 'Costs more than its limit', Stop: 'No clear gap after a fair test', 'Too early': 'Test not fair yet', Stopped: 'Stopped at a review' };
+
+/* ---------- the timeline strip and the three checkpoints ---------- */
+function timeline() {
+  const ds = S.ds, ev = ds.event, cp = E.checkpoints(ds), start = ev.planStart || ev.start, total = E.daysBetween(start, ev.end) + 1, D = S.asOf;
+  const x = d => Math.max(0, Math.min(100, (E.daysBetween(start, d) + 0.5) / total * 100));
+  let h = '';
+  for (let w = 1; ; w++) { const d = E.addDays(start, 7 * (w - 1)); if (d > ev.end) break; const end = E.addDays(d, 6); h += `<button class="tk ${D >= d && D <= end ? 'on' : ''}" style="left:${x(d)}%;width:${700 / total}%" data-act="go" data-d="${end > ev.end ? ev.end : end}" type="button" title="Week ${w}, ${dshort(d)}–${dshort(end)}">${w}</button>`; }
+  if (sim()) h += `<span class="band" style="left:${x(E.addDays(start, 28))}%;width:${2100 / total}%">exams</span>`;
+  if (ev.regOpens) h += `<span class="mk" style="left:${x(ev.regOpens)}%">registrations open</span>`;
+  h += `<span class="fest" style="left:${x(ev.eventStartDay)}%;width:${Math.max(1.5, 200 / total)}%"></span>`;
+  const SHORT = { review: sim() ? 'W10' : 'Review', eve: 'Eve', result: 'Result' };
+  const pins = [['review', cp.review, sim() ? 'Week 10 review' : 'Review point', sim() ? 'We pause here on purpose: 3 weeks of registrations are enough to judge the bets. We stop what failed and release the first reserve money. Uses only data up to this day.' : 'The same point as our 2027 week 10 review: 33 days before the fest. Shows what 2025 knew then.'],
+    ['eve', cp.eve, 'Fest eve check', 'One day before the fest: are we ready for the people coming? Checks the forecast, confirmations, gate load and reserve. ' + (sim() ? 'Assumes the earlier decisions were taken on time.' : '')],
+    ['result', cp.result, 'Result', sim() ? 'One realistic run of the plan, not the best case, checked against what we forecast earlier.' : 'What actually happened in 2025, checked against what the data said earlier.']];
+  h += pins.map(([k, d, l, tip]) => `<span class="pin pin-${k} ${D === d ? 'on' : ''}" style="left:${x(d)}%"><button data-act="go" data-d="${d}" type="button"><span class="long">${esc(l)}</span><span class="short">${esc(SHORT[k])}</span></button>${info(tip, k === 'result')}</span>`).join('');
+  h += `<span class="now" style="left:${x(D)}%" title="Viewing ${esc(dshort(D))}"></span>`;
+  return `<div class="tl" aria-label="Campaign timeline"><div class="track">${h}</div></div>`;
+}
+function checkpointCard() {
+  const cp = E.checkpoints(S.ds), D = S.asOf;
+  if (D === cp.review) return reviewCard();
+  if (D === cp.eve) return eveCard();
+  if (D === cp.result) return resultCard();
+  const next = [[cp.review, sim() ? 'Week 10 review' : 'Review point'], [cp.eve, 'Fest eve check'], [cp.result, 'Result']].find(p => p[0] > D);
+  return next ? `<p class="note nextcp">Next checkpoint: <button class="link" data-act="go" data-d="${next[0]}" type="button">${esc(next[1])}, ${esc(dshort(next[0]))} →</button></p>` : '';
+}
+function reviewCard() {
+  const ds = S.ds, D = S.asOf, A = assump(), f = fcAt(D), groups = groupFlags(E.flags(ds, D, rules(), A)).filter(g => g.level !== 'watch' && g.subj !== 'Attendee target');
+  if (!sim()) return `<div class="cp"><h2>Review point: what 2025 knew 33 days before the fest</h2><p>This is the same point as our 2027 week 10 review. 2025 had no tests or reserve, so the only levers were its channels.</p>
+    <ul>${groups.slice(0, 4).map(g => `<li><b>${esc(g.subj)}:</b> ${esc(g.items[0].reason)}</li>`).join('')}</ul><p class="note">The forecast here extends the last 7 days of sign-ups. 2025 then had a late surge, which is why 2027 forecasts with a pace curve.</p></div>`;
+  const rp = E.reservePlan(ds, D, A), bets = E.betRows(ds, D, A), early = bets.filter(b => b.decision === 'Too early');
+  const extra = rp.suggestions.map(r => ({ amount: r.amount, cost: r.next_tranche_cost })), after = extra.length ? fcAt(D, extra) : null;
+  const decided = E.planDecisionsAt(ds, E.addDays(D, 1)).filter(p => p.decided_at.slice(0, 10) === E.addDays(D, 1));
+  return `<div class="cp"><h2>Week 10 review: we pause here on purpose</h2>
+  <p>Registrations have been open 3 weeks: enough to judge the bets. Before any more money moves we check three things: are we on course, what is failing, and where the next rupee works best.</p>
+  <h3>What the data says to decide</h3><ul class="dec">
+  ${rp.suggestions.map(r => `<li><span>Release <b>${lakh(r.amount)}</b> to <b>${esc(r.bet)}</b>: its next extra attendee costs about ${inr(r.next_tranche_cost)}, under its ${inr(r.cap)} limit.</span><button class="btn sm" data-act="release" data-id="${esc(r.campaign_id)}" data-amt="${r.amount}" type="button">Release</button></li>`).join('')}
+  ${groups.slice(0, 3).map(g => `<li><span><b>${esc(g.subj)}:</b> ${esc(g.items[0].reason)}.</span><button class="btn ghost sm" data-act="flag" data-id="${esc(g.items[0].id)}" type="button">Act</button></li>`).join('')}
+  ${early.map(b => `<li><span><b>${esc(b.bet)}:</b> keep testing (${esc(b.evidence_gaps[0])}).</span></li>`).join('')}</ul>
+  ${after ? `<p class="impact">If we release the suggested ${lakh(extra.reduce((a, x) => a + x.amount, 0))}: most likely <b>${fmt(f.likely)} → ${fmt(after.likely)}</b> attendees, bad luck ${fmt(f.bad)} → ${fmt(after.bad)}. ${pill(f.verdict)} → ${pill(after.verdict)} ${info('Each released rupee is assumed to buy extra attendees at the bet\'s next-attendee cost, delivering 50–100% of that (most likely 80%), because scaled bets usually do a bit worse than their test.')}</p>` : ''}
+  ${decided.length ? `<p class="note">In the rehearsal the team decided on ${esc(dshort(E.addDays(D, 1)))}: ${decided.map(p => esc(p.title)).join('; ')}.</p>` : ''}</div>`;
+}
+function expectedPeak(likely) { return likely * ENTRIES_PER_VISITOR / 2 * PEAK_HOUR_SHARE; }
+function eveCard() {
+  const ds = S.ds, D = S.asOf, A = assump(), f = fcAt(D), k = E.kpis(ds, D, A), cap = ds.event.gateCap || A.gate_capacity.value, peak = expectedPeak(f.likely || 0);
+  const conf = k.active ? k.status.confirmed / k.active : null, open = S.tasks.filter(t => (t.base || '25') === baseOf() && tStatus(t) !== 'done' && t.due && t.due < D).length;
+  const rows = [
+    [f.verdict === 'Safe', 'Forecast', `${pill(f.verdict)} bad luck ${fmt(f.bad)} · most likely ${fmt(f.likely)} · good luck ${fmt(f.good)} vs target ${fmt(f.target)}`],
+    [conf >= 0.8, 'Confirmed', `${pct(conf)} of active registrants have confirmed (2025 finished at 89%)`],
+    [peak < 0.8 * cap, 'Gates', `busiest hour ≈ ${fmt(peak)} entries if arrivals bunch like 2025, vs a safe ${fmt(cap)}/hour ${info('Expected attendees × 1.59 entries each ÷ 2 days × 24.5% in the busiest hour (2025 pattern).')}`],
+    [true, 'Waitlist', `${fmt(k.status.waitlisted)} people waitlisted; unscanned passes go to them at 2 pm`],
+    [!open, 'Tasks', open ? `${open} task${open > 1 ? 's' : ''} due by today still open` : 'nothing overdue']
+  ];
+  if (hasBets()) rows.splice(3, 0, [true, 'Reserve', `${lakh(E.reserveLeft(ds, D))} left of ${lakh(ds.event.reserve)}`]);
+  return `<div class="cp"><h2>Fest eve check: are we ready for the people coming?</h2><p>${sim() ? 'One day before the fest. This assumes the reviews at weeks 10, 12 and 14 were held and their decisions taken on time.' : 'One day before the 2025 fest, with what was known then.'}</p>
+  <table class="check">${rows.map(([g, l, t]) => `<tr><td>${g ? '<span class="ck ok">✓</span>' : '<span class="ck warn">!</span>'}</td><td><b>${esc(l)}</b></td><td>${t}</td></tr>`).join('')}</table></div>`;
+}
+function resultCard() {
+  const ds = S.ds, cp = E.checkpoints(ds), A = assump(), k = E.kpis(ds, cp.result, A), g = k.target || {}, r = fcAt(cp.review), eve = fcAt(cp.eve), b = E.budget(ds, cp.result);
+  const inside = (f, v) => v >= f.bad && v <= f.good, v = k.visitors;
+  let lyLine = '';
+  if (sim()) { const l = ly(); if (l) lyLine = `<li>Last year: <b>${fmt(l.k.visitors)}</b> outside attendees, so ${pct(v / l.k.visitors - 1)} more.</li>`; }
+  return `<div class="cp"><h2>Result: ${fmt(v)} outside attendees ${pill(v >= g.visitors ? 'Hit' : 'Missed')}</h2><ul>
+  <li>Target ${fmt(g.visitors)}${g.stretch_visitors ? `, stretch ${fmt(g.stretch_visitors)}` : ''}: ${pct(v / g.visitors)} of the target.</li>
+  <li>At the ${sim() ? 'week 10 review' : 'review point'} the forecast${sim() ? ' if nothing changed' : ''} was ${fmt(r.bad)}–${fmt(r.good)} (most likely ${fmt(r.likely)}). ${sim() ? `The decisions taken after it added roughly <b>${fmt(v - r.likely)}</b> attendees (est.: the gap also includes luck).` : (v > r.good ? 'The result beat it: late sign-ups surged, which a last-7-days forecast cannot see. 2027 uses a pace curve for this reason.' : '')}</li>
+  <li>Fest eve forecast ${fmt(eve.bad)}–${fmt(eve.good)}: the result is ${inside(eve, v) ? '<b>inside</b> it ✓' : v > eve.good ? 'above it' : 'below it'}.</li>
+  ${lyLine}<li>Spent ${lakh(b.spent)} of ${lakh(b.approved)}${hasBets() && E.reserveLeft(ds, cp.result) ? `; ${lakh(E.reserveLeft(ds, cp.result))} of reserve stayed unspent because no bet passed the money rule` : ''}. Cost per attendee ${inr(b.spent / v)}.</li></ul></div>`;
+}
 
 /* ---------- pages ---------- */
 const PAGES = {};
 PAGES.overview = () => {
-  const ds = S.ds, D = S.asOf, A = assump(), k = E.kpis(ds, D, A), fl = E.flags(ds, D, rules(), A), b = E.budget(ds, D), g = k.target || {}, ev = ds.event;
-  const pc = E.pace(ds, D)[0], proj = k.projection;
-  let title, sub, tiles;
-  if (pc && pc.curve && before()) {
-    title = { ok: 'Registrations are at or above stretch pace', watch: 'Registrations are above base pace, below stretch', warn: 'Registrations are below base pace', act: 'Registrations are more than 15% below base pace', none: 'Registrations have just opened' }[pc.level];
-    sub = `Week ${pc.week} of 15. Base pace leads to about ${fmt(g.visitors)} outside attendees, stretch pace to about ${fmt(g.stretch_visitors)}.`;
-    const rp = hasBets() ? E.reservePlan(ds, D, A) : null;
-    tiles = kpi('Outside registrations', fmt(k.registered), `plan for this week: ${fmt(pc.base_pace)} base · ${fmt(pc.stretch_pace)} stretch`) +
-      kpi('Expected outside attendees', proj.likely ? fmt(proj.likely) : 'too early', proj.likely ? `likely range ${fmt(proj.low)}–${fmt(proj.high)}` : 'needs 10% of registrations first', 'A') +
-      kpi('Spent', lakh(k.spend), `of ${lakh(b.approved)} budget (${pct(b.used)})`) +
-      (rp ? kpi('Reserve left', lakh(rp.reserve_left), rp.suggestions.length ? rp.suggestions.length + ' bet' + (rp.suggestions.length > 1 ? 's' : '') + ' ready for it (see Bets)' : 'no bet ready for it yet') : '');
-  } else if (ended()) {
-    const rows = E.campaignRows(ds, D, { assumptions: A }).filter(r => r.campaign_id && r.registered >= 30), worst = rows.sort((a, c) => a.showup - c.showup)[0];
-    title = `${fmt(k.visitors)} outside visitors came: ${pct(k.attainment && k.attainment.visitors)} of the ${fmt(g.visitors)} goal`;
-    sub = `Registrations ended at ${fmt(k.registered)} of ${fmt(g.registered)}.` + (worst ? ` Weakest show-up: ${worst.campaign}, only ${pct(worst.showup)} of its registrants came.` : '');
-    tiles = kpi('Outside visitors', fmt(k.visitors), `goal ${fmt(g.visitors)} · ${fmt(k.walkins)} came without registering`) + kpi('Registered', fmt(k.registered), `goal ${fmt(g.registered)}`) + kpi('Show-up', pct(k.showup), `${fmt(k.visitorsRegistered)} of ${fmt(k.registered)} registered people came`) + kpi('Cost per visitor', inr(k.costPerVisitor), `${lakh(k.spend)} spent`);
-  } else {
-    const p = E.pace(ds, D).find(x => x.key === 'registered');
-    title = before() ? (p && p.gap > 0 ? (p.on_pace ? 'On pace for registrations' : 'Registrations are behind pace') + `: ${p.run_rate_7d} a day vs ${p.required_per_day} needed` : 'Registration goal reached') : `Event in progress: ${fmt(k.visitors)} outside visitors so far`;
-    sub = `Goal: ${fmt(g.registered)} registrations and ${fmt(g.visitors)} outside visitors.`;
-    tiles = kpi('Registered', fmt(k.registered), `goal ${fmt(g.registered)}`) + kpi('Expected visitors', fmt(proj.likely), `likely range ${fmt(proj.low)}–${fmt(proj.high)}`, 'A') + kpi('Confirmed', fmt(k.status.confirmed), `${pct(k.active ? k.status.confirmed / k.active : null)} of active registrations`) + kpi('Spent', lakh(k.spend), `${pct(b.used)} of budget`);
-  }
-  const groups = groupFlags(fl), top = groups.filter(x => x.level !== 'watch').slice(0, 3), more = groups.length - top.length;
-  return `<h1>${esc(title)}${ev.simulated ? '<span class="label sim">simulated data</span>' : ''}</h1><p class="sub">${esc(sub)}</p>
+  const ds = S.ds, D = S.asOf, A = assump(), k = E.kpis(ds, D, A), f = fcAt(D), g = k.target || {}, b = E.budget(ds, D), ev = ds.event, wk = E.weekOf(ds, D);
+  let title, sub;
+  if (f.mode === 'actual') title = `${pill(f.verdict)} ${fmt(k.visitors)} outside attendees vs the ${fmt(g.visitors)} target`;
+  else if (f.mode === 'too early') title = `Too early to forecast: ${ev.regOpens && D < ev.regOpens ? 'registrations open ' + dshort(ev.regOpens) : 'under 10% of registrations are in'}`;
+  else title = `${pill(f.verdict)} ${f.mode === 'live' ? 'Fest under way: ' + fmt(k.visitors) + ' outside visitors so far; most likely ' + fmt(f.likely) : 'Most likely ' + fmt(f.likely) + ' outside attendees vs the ' + fmt(g.visitors) + ' target'}`;
+  sub = (wk && wk <= 15 && before() ? 'Week ' + wk + ' of 15 · ' : '') + (before() ? daysTxt(daysToFest()) + ' to the fest' : started() && !ended() ? 'Fest day ' + (E.daysBetween(ev.eventStartDay, D) + 1) : 'The fest is over') + '.';
+  const tip = 'We don\'t know exactly how each part will turn out, so we play the fest 1,000 times, each time drawing every uncertain input (show-up rates, sign-ups still to come, walk-ins) from its range. Bad luck: only 1 in 10 runs did worse. Good luck: only 1 in 10 did better. Safe = even bad luck beats the target; At risk = most likely beats it, bad luck doesn\'t; Off track = most likely misses it.';
+  const l = ly();
+  const fcBlock = f.mode === 'forecast' || f.mode === 'live' ? `<div class="fc"><div><span class="l">Bad luck</span><b>${fmt(f.bad)}</b></div><div class="mid"><span class="l">Most likely</span><b>${fmt(f.likely)}</b></div><div><span class="l">Good luck</span><b>${fmt(f.good)}</b></div><div class="vs"><span class="l">Target${info(tip)}</span><b>${fmt(f.target)}</b>${f.stretch ? `<span class="note">stretch ${fmt(f.stretch)}</span>` : ''}</div></div>` : '';
+  const tr = todayReleases(D), trLine = tr.length ? `<p class="note">Includes your release${tr.length > 1 ? 's' : ''} made today (${tr.map(x => lakh(x.amount) + ' to ' + esc(x.bet)).join(', ')}): not in the registrations yet, so its effect is estimated.</p>` : '';
+  const lyLine = l && before() ? `<p class="note">Last year at this point (${dshort(l.D)}, ${daysTxt(daysToFest())} out): ${fmt(l.k.registered)} registered, ${lakh(l.k.spend)} spent. Now: <b>${fmt(k.registered)}</b> registered, <b>${lakh(k.spend)}</b> spent.</p>` : '';
+  const pc = E.pace(ds, D)[0];
+  const regSub = pc && pc.curve && before() && pc.level !== 'none' ? `plan for this week: ${fmt(pc.base_pace)} base, ${fmt(pc.stretch_pace)} stretch` : `goal ${fmt(g.registered)}`;
+  const tiles = kpi('Registered', fmt(k.registered), regSub, 'Outside people with a pass registration (cancelled ones included, as in 2025). The plan curve says what share of final sign-ups we expect by each week.') +
+    kpi(f.mode === 'actual' ? 'Attended' : 'Expected to attend', f.mode === 'actual' ? fmt(k.visitors) : f.likely ? fmt(f.likely) : '–', f.mode === 'actual' ? `target ${fmt(g.visitors)}` : f.likely ? `est. · range ${fmt(f.bad)}–${fmt(f.good)}` : 'too early', 'Outside people verified at the gate, counted once. Before the fest it is the most likely number from the forecast.') +
+    kpi('Spent', lakh(k.spend), `of ${lakh(b.approved)} budget (${pct(b.used)})`, 'Net marketing spend so far (credits subtracted).') +
+    kpi('Cost per attendee', ok(k.costPerAttendee) ? inr(k.costPerAttendee) : '–', started() ? 'spent ÷ attendees so far' : `est. · spent ÷ ${fmt(k.expectedFromRegistered)} expected from today's registrations`, 'Money spent so far divided by the people it has brought in so far (before the fest: the attendees we expect from the people already registered). Our limit for an extra person is ₹250 (₹200–235 for some bets).');
+  const groups = groupFlags(E.flags(ds, D, rules(), A)).filter(x => x.level !== 'watch'), top = groups.slice(0, 3), more = groups.length - top.length;
+  const doing = doingList();
+  return `${head(title, esc(sub))}${timeline()}${checkpointCard()}
+  ${fcBlock}${trLine}${lyLine}
   <div class="kpis">${tiles}</div>
-  <div class="two"><div class="card"><h2>${pc && pc.curve ? 'Outside registrations vs plan' : 'Registrations vs goal'}</h2><div class="fig"><svg id="pathChart" role="img" aria-label="Registrations against plan"></svg></div>
-    <div class="legend">${pc && pc.curve ? '<span><i style="border-color:#111418;border-top-width:3px"></i>Actual</span><span><i style="border-color:#111418;border-top-style:dashed"></i>Base plan</span><span><i style="border-color:#2f6fed;border-top-style:dashed"></i>Stretch plan</span>' : '<span><i style="border-color:#111418;border-top-width:3px"></i>Registered</span><span><i style="border-color:#111418;border-top-style:dashed"></i>Goal</span>'}</div></div>
-  <div class="card"><h2>Needs attention</h2>${top.length ? top.map(x => groupRow(x)).join('') : '<p class="empty">Nothing at Warn or Act.</p>'}${more > 0 ? `<p class="note" style="margin-top:8px"><a href="#signals">${more} more on Signals →</a></p>` : ''}</div></div>
-  <p class="note" style="margin-top:14px">"est." marks an estimate that uses assumptions (change them in Data). Every other number is counted from the records.</p>`;
+  <div class="two"><div class="card"><h2>How the forecast changed, week by week ${info('Each dot is the most likely number forecast on that date; the shaded band runs from bad luck to good luck. It narrows as we learn more. Only dates up to the one you are viewing are shown.')}</h2><div class="fig"><svg id="fcChart" role="img" aria-label="Forecast by week"></svg></div>
+    <div class="legend"><span><i style="border-color:#111418;border-top-width:3px"></i>Most likely</span><span><i class="sw" style="background:#2f6fed"></i>Bad to good luck</span><span><i style="border-color:#c8281e;border-top-style:dashed"></i>Target</span>${f.stretch ? '<span><i style="border-color:#7a8796;border-top-style:dashed"></i>Stretch</span>' : ''}</div></div>
+  <div class="stack2"><div class="card"><h2>Needs attention</h2>${top.length ? top.map(groupRow).join('') : '<p class="empty">Nothing at Warn or Act.</p>'}${more > 0 ? `<p class="note" style="margin-top:8px"><a href="#insights">${more} more on Insights →</a></p>` : ''}</div>
+  <div class="card"><h2>What we are doing about it</h2>${doing}</div></div></div>`;
 };
+function doingList() {
+  const D = S.asOf, b = baseOf();
+  const plan = sim() ? E.planDecisionsAt(S.ds, D).slice(-3).reverse().map(p => `<li><span class="note">${esc(dshort(p.decided_at))}</span> ${esc(p.title)} <span class="label">plan</span></li>`) : [];
+  const mine = S.decisions.filter(d => (d.base || '25') === b && d.as_of <= D).sort((x, y) => (y.created_at || '').localeCompare(x.created_at || '')).slice(0, 3).map(d => `<li><span class="note">${esc(dshort(d.as_of))}</span> ${esc(d.title)}</li>`);
+  const tasks = S.tasks.filter(t => (t.base || '25') === b && tStatus(t) !== 'done').sort((x, y) => (x.due || '').localeCompare(y.due || '')).slice(0, 4).map(t => `<li>${esc(t.title)} <span class="note">· ${esc(ownerLabel(t.owner))}, due ${esc(dshort(t.due))}${t.due < D ? ' · <span style="color:var(--act)">late</span>' : ''}</span></li>`);
+  if (!plan.length && !mine.length && !tasks.length) return '<p class="empty">No actions yet. Use "Act on this" on anything that needs attention.</p>';
+  return `${mine.length || plan.length ? `<h3>Decided</h3><ul class="plain">${mine.concat(plan).join('')}</ul>` : ''}${tasks.length ? `<h3>Open tasks</h3><ul class="plain">${tasks.join('')}</ul>` : ''}<p class="note"><a href="#tasks">All tasks and decisions →</a></p>`;
+}
+function fcPoints() {
+  const ds = S.ds, cp = E.checkpoints(ds), D = S.asOf;
+  const pts = dateOptions().map(o => o[0]).filter(d => d <= D && d <= cp.result).filter(d => fcAt(d).likely);
+  return pts.map(d => ({ d, f: fcAt(d) }));
+}
 function drawOverview() {
-  const ds = S.ds, ev = ds.event, D = S.asOf, curve = ds.paceCurve.length;
-  const endDay = curve ? E.addDays(ev.eventStartDay, -1) : ev.eventEndDay, from = curve && ev.regOpens ? E.addDays(ev.regOpens, -7) : ev.start, days = []; for (let d = from; d <= endDay; d = E.addDays(d, 1)) days.push(d);
-  const cum = k => E.trend(ds, k, 'day', ev.start, endDay).rows.slice(E.daysBetween(ev.start, from)).map(r => r.cumulative);
-  const cut = D > endDay ? days.length - 1 : D < from ? -1 : days.indexOf(D), upto = arr => arr.map((v, i) => i <= cut ? v : null);
-  let series;
-  if (curve) { const t = E.targetAt(ds, D) || {}; const sh = days.map(d => E.shareAt(ds, d)); series = [{ values: sh.map(x => x * t.stretch_registration_goal), color: '#2f6fed', dash: '5 4', w: 1.5 }, { values: sh.map(x => x * t.registration_goal), color: '#111418', dash: '5 4', w: 1.5 }, { values: upto(cum('registrations')), color: '#111418', w: 3 }]; }
-  else { const gr = days.map(d => (E.targetAt(ds, d) || {}).registration_goal || null); series = [{ values: gr, color: '#111418', dash: '5 4', w: 1.5 }, { values: upto(cum('registrations')), color: '#111418', w: 3 }]; }
-  mount('pathChart', s => lineChart(s, { x: days, series, marker: cut >= 0 && D <= endDay ? cut : null, markerLabel: ev.simulated && D === ev.end ? 'today' : 'as of ' + dshort(D) }));
+  const pts = fcPoints(), t = fcAt(S.asOf); if (!pts.length) { const s = document.getElementById('fcChart'); if (s) s.parentNode.innerHTML = '<p class="empty">The forecast starts once 10% of registrations are in.</p>'; return; }
+  const x = pts.map(p => p.d), tg = pts.map(() => t.target), st = t.stretch ? pts.map(() => t.stretch) : null;
+  const series = [{ values: tg, color: '#c8281e', dash: '5 4', w: 1.5, label: 'target ' + fmt(t.target) }, { values: pts.map(p => p.f.likely), color: '#111418', w: 2.5, dots: true }];
+  if (st && t.stretch < Math.max(...pts.map(p => p.f.good)) * 1.6) series.unshift({ values: st, color: '#7a8796', dash: '3 4', w: 1.2, label: 'stretch ' + fmt(t.stretch) });
+  mount('fcChart', s => lineChart(s, { x, xl: d => dshort(d), series, bands: [{ lo: pts.map(p => p.f.bad), hi: pts.map(p => p.f.good), color: '#2f6fed' }] }));
 }
 
 PAGES.funnel = () => {
-  const ds = S.ds, D = S.asOf, A = assump(), cid = S.funnelCamp === 'all' ? undefined : S.funnelCamp, f = E.funnel(ds, D, cid), a = E.anonFunnel(ds, D, cid);
-  const get = n => (f.steps.find(x => x.step.startsWith(n)) || {}).n || 0;
-  let steps = [['Reached (left their details)', get('Identified')], ['Started the registration form', get('Started')], ['Registered', get('Registered')], ['Confirmed their spot', get('Confirmed')]];
-  if (!before()) steps.push(['Came to the fest', get('Visited')]);
-  steps = steps.map((x, i) => ({ step: x[0], n: x[1], from_prev: i ? (steps[i - 1][1] ? x[1] / steps[i - 1][1] : null) : null }));
-  const top = steps[0].n || 1; let worst = null; steps.forEach((s, i) => { if (i && s.from_prev !== null && (!worst || s.from_prev < worst.from_prev)) worst = s; });
-  let st = { confirmed: 0, interested: 0, waitlisted: 0 }; if (!cid) st = E.kpis(ds, D, A).status; else { const r = E.campaignRows(ds, D, { assumptions: A }).find(x => x.campaign_id === cid) || {}; st = { confirmed: r.confirmed || 0, interested: r.interested || 0, waitlisted: r.waitlisted || 0 }; }
-  const exp = st.confirmed * A.showup_confirmed.value + st.interested * A.showup_interested.value + st.waitlisted * A.showup_waitlisted.value;
-  return `<h1>Funnel${cid ? ': ' + esc(f.campaign) : ''}</h1><p class="sub">Each person counted once.${worst ? ` Biggest drop: <b>${esc(worst.step.toLowerCase())}</b> (${pct(worst.from_prev)} of the step before).` : ''}${cid ? ' People are grouped by the campaign that first reached them.' : ''}</p>
+  const ds = S.ds, D = S.asOf, A = assump(), cid = S.funnelCamp === 'all' ? undefined : S.funnelCamp, f = E.funnelView(ds, D, A, cid), a = E.anonFunnel(ds, D, cid), l = !cid ? ly() : null;
+  const top = Math.max(...f.steps.map(s => s.n || 0), 1), drop = f.steps.find(s => s.key === f.biggest_drop);
+  const lyStep = k => l ? (l.f.steps.find(s => s.key === k) || {}).n : null;
+  const cap = ds.event.gateCap || A.gate_capacity.value, dsx = E.dayStats(ds, D, A), fc = fcAt(D);
+  const peak = started() && dsx.peak_hour ? dsx.peak_hour.entries : fc.likely ? expectedPeak(fc.likely) : null;
+  const sub = `The same four steps for every year, each person counted once. ${drop ? `Biggest drop: <b>${esc(drop.label.toLowerCase())}</b>, ${pct(drop.from_prev)} of the step before.` : ''}`;
+  return `${head('Funnel' + (cid ? ': ' + esc(f.campaign) : ''), sub)}
   <div class="row" style="margin-bottom:14px"><label class="l" style="min-width:260px">Campaign<select data-ch="funnelCamp">${campOptions(S.funnelCamp, true)}</select></label></div>
-  <div class="card funnel">${steps.map(s => `<div class="r"><span>${esc(s.step)}</span><div class="b"><i class="${s === worst ? 'hot' : ''}" style="width:${(s.n / top * 100).toFixed(1)}%"></i></div><span class="x">${fmt(s.n)}${s.from_prev !== null ? ' · ' + pct(s.from_prev) : ''}</span></div>`).join('')}
-  ${before() ? `<p class="note" style="margin-top:10px">Expected to come <span class="tag">est.</span>: about <b>${fmt(exp)}</b> of the ${fmt(get('Registered'))} registered, based on how many have confirmed.</p>` : ''}
-  ${!cid && f.walkins ? `<p class="note" style="margin-top:8px">Plus ${fmt(f.walkins)} people who came without registering.</p>` : ''}</div>
+  <div class="card funnel">${f.steps.map(s => `<div class="r"><span>${esc(s.label)}${info(s.help)}</span><div class="b"><i class="${s.key === f.biggest_drop ? 'hot' : ''} ${s.expected ? 'est' : ''}" style="width:${((s.n || 0) / top * 100).toFixed(1)}%"></i></div><span class="x">${fmt(s.n)}${s.from_prev !== null ? ' · ' + pct(s.from_prev) : ''}</span></div>`).join('')}</div>
+  <div class="scroll" style="margin-top:16px"><table><tr><th>Step</th><th class="n">People</th><th class="n">% of step before${info('Share of the people in the step above who reached this step.', true)}</th><th class="n">Cost each${info('Spend so far ÷ people at this step. It shows what each reached person, registration, confirmation and attendee costs.', true)}</th><th class="n">Target</th>${l ? `<th class="n">2025, same point${info('2025 at the same number of days before its fest.', true)}</th>` : ''}</tr>
+  ${f.steps.map(s => `<tr><td>${esc(s.label)}${s.expected ? ' <span class="tag">est.</span>' : ''}</td><td class="n">${fmt(s.n)}</td><td class="n">${pct(s.from_prev)}</td><td class="n">${inr(s.cost_each)}</td><td class="n">${s.target ? fmt(s.target) + (s.pace ? `<div class="note">${fmt(s.pace)} by now</div>` : '') : '–'}</td>${l ? `<td class="n">${fmt(lyStep(s.key))}</td>` : ''}</tr>`).join('')}</table></div>
+  ${!cid && f.walkins ? `<p class="note">Plus ${fmt(f.walkins)} people who came without registering: ${fmt(f.total_attended)} outside attendees in all.</p>` : ''}
+  ${!cid && peak ? `<div class="card" style="margin-top:16px"><h2>Can the gates take it? ${info(started() ? 'Verified entries in the busiest hour so far.' : 'Expected attendees × 1.59 entries each ÷ 2 days × 24.5% in the busiest hour, the 2025 pattern.')}</h2><div class="cap"><i style="width:${Math.min(100, peak / cap * 100).toFixed(1)}%" class="${peak >= 0.8 * cap ? 'hot' : ''}"></i></div><p class="note">${started() ? 'Busiest hour' : 'Expected busiest hour'}: ${fmt(peak)} entries vs a safe ${fmt(cap)} per hour (${pct(peak / cap)}).</p></div>` : ''}
+  ${!cid ? `<div class="card" style="margin-top:16px"><h2>${ds.paceCurve.length ? 'Registrations vs the plan' : 'Registrations vs the goal'}</h2><div class="fig" style="min-height:240px"><svg id="pathChart" role="img" aria-label="Registrations against plan"></svg></div>
+  <div class="legend">${ds.paceCurve.length ? '<span><i style="border-color:#111418;border-top-width:3px"></i>Actual</span><span><i style="border-color:#111418;border-top-style:dashed"></i>Base plan</span><span><i style="border-color:#2f6fed;border-top-style:dashed"></i>Stretch plan</span>' : '<span><i style="border-color:#111418;border-top-width:3px"></i>Registered</span><span><i style="border-color:#111418;border-top-style:dashed"></i>Goal</span>'}</div></div>` : ''}
   <p class="note" style="margin-top:12px">Before people leave their details (ads and links, counted as events, not people): ${fmt(a.impressions)} views → ${fmt(a.clicks)} clicks (${pct(a.ctr, 1)}) → ${fmt(a.sessions)} page visits → ${fmt(a.form_starts)} form starts.</p>`;
 };
+function drawPath() {
+  const ds = S.ds, ev = ds.event, D = S.asOf, curve = ds.paceCurve.length;
+  const endDay = E.addDays(ev.eventStartDay, -1), from = curve && ev.regOpens ? E.addDays(ev.regOpens, -7) : ev.start, days = []; for (let d = from; d <= endDay; d = E.addDays(d, 1)) days.push(d);
+  const cum = E.trend(ds, 'registrations', 'day', ev.start, endDay).rows.slice(E.daysBetween(ev.start, from)).map(r => r.cumulative);
+  const cut = D > endDay ? days.length - 1 : D < from ? -1 : days.indexOf(D), upto = arr => arr.map((v, i) => i <= cut ? v : null);
+  let series;
+  if (curve) { const t = E.targetAt(ds, D) || {}; const sh = days.map(d => E.shareAt(ds, d)); series = [{ values: sh.map(x => x * t.stretch_registration_goal), color: '#2f6fed', dash: '5 4', w: 1.5 }, { values: sh.map(x => x * t.registration_goal), color: '#111418', dash: '5 4', w: 1.5 }, { values: upto(cum), color: '#111418', w: 3 }]; }
+  else { const gr = days.map(d => (E.targetAt(ds, d) || {}).registration_goal || null); series = [{ values: gr, color: '#111418', dash: '5 4', w: 1.5 }, { values: upto(cum), color: '#111418', w: 3 }]; }
+  mount('pathChart', s => lineChart(s, { x: days, series, marker: cut >= 0 && D <= endDay ? cut : null, markerLabel: D === ev.today ? 'today' : dshort(D) }));
+}
+
 PAGES.campaigns = () => {
   const ds = S.ds, D = S.asOf, A = assump(), end = ended(), k = E.kpis(ds, D, A), cap = A.cost_cap.value, min = rules().min_people.value, bets = E.betRows(ds, D, A);
   const rows = E.campaignRows(ds, D, { assumptions: A }).filter(r => r.campaign_id || r.registered || r.visitors);
-  const groups = hasBets() ? [['Channels', rows.filter(r => r.kind !== 'bet')], ['Bets (judged against a comparison group, see Bets)', rows.filter(r => r.kind === 'bet')]] : [['', rows]];
+  const groups = hasBets() ? [['Channels', rows.filter(r => r.kind !== 'bet')], ['Bets (judged against a comparison group: see Bets)', rows.filter(r => r.kind === 'bet')]] : [['', rows]];
   const tr = r => { const [v, why] = verdict(r, end, k.showup, cap, min, bets), b = bets.find(x => x.campaign_id === r.campaign_id);
     const cost = b ? b.cost_per_extra : end ? r.cost_per_visitor : r.cost_per_expected_visitor;
     return `<tr class="${r.campaign_id ? 'click' : ''}" ${r.campaign_id ? `data-act="camp" data-id="${esc(r.campaign_id)}" tabindex="0"` : ''}><td><b>${esc(r.campaign)}</b>${r.status && r.status !== 'active' ? ` <span class="label">${esc(r.status)}</span>` : ''}<div class="note">${esc(r.owner)}${r.audience === 'our students' ? ' · our own students' : ''}</div></td>
     <td class="n">${money(r.spend)}${r.planned_budget_inr ? `<div class="note">of ${money(r.planned_budget_inr)}</div>` : ''}</td><td class="n">${fmt(r.registered)}</td><td class="n">${fmt(r.confirmed)}</td><td class="n">${end ? fmt(r.visitors) : fmt(r.expected_visitors)}</td>
-    <td class="n">${r.spend && ok(cost) ? inr(cost) : '–'}${b ? '<div class="note">per extra</div>' : ''}</td><td><span class="${vcls(v)}">${esc(v)}</span><div class="note">${esc(b ? ({ Scale: 'gets reserve money', Keep: 'works, no extra money', Change: 'above its cap', Stop: 'no lift', 'Too early': 'not enough evidence yet' })[b.decision] : why)}</div></td></tr>`; };
-  return `<h1>Campaigns</h1><p class="sub">${end ? 'Channels are judged on cost per visitor' : 'Channels are judged on cost per expected attendee'} against a ${inr(cap)} cap. Click a row to edit it.</p>
+    <td class="n">${r.spend && ok(cost) ? inr(cost) : '–'}${b ? '<div class="note">per extra</div>' : ''}</td><td><span class="${vcls(v)}">${esc(v)}</span><div class="note">${esc(why)}</div></td></tr>`; };
+  return `${head('Campaigns', `${end ? 'Channels are judged on cost per attendee' : 'Channels are judged on cost per expected attendee'} against a ${inr(cap)} limit. Click a row to edit it.`)}
   <div class="row" style="margin-bottom:12px"><button class="btn" data-act="newcamp" type="button">Add campaign</button><button class="btn ghost" data-act="spend" type="button">Record spend</button></div>
-  <div class="scroll"><table><tr><th>Campaign</th><th class="n">Spent</th><th class="n">Registered</th><th class="n" title="Said they are coming">Confirmed</th><th class="n">${end ? 'Came' : 'Expected to come' + tag('A')}</th><th class="n">${end ? 'Cost per visitor' : 'Cost per attendee' + tag('A')}</th><th>Verdict</th></tr>
-  ${groups.map(([name, list]) => (name ? `<tr><td colspan="7" class="note" style="background:#fff;font-weight:600;padding-top:14px">${esc(name)}</td></tr>` : '') + list.map(tr).join('')).join('')}</table></div>`;
+  <div class="scroll"><table><tr><th>Campaign</th><th class="n">Spent</th><th class="n">Registered</th><th class="n">Confirmed${info('Said "I am coming".', true)}</th><th class="n">${end ? 'Came' : 'Expected to come'}${info(end ? 'Verified at the gate.' : 'Estimate: confirmed × 75% + unconfirmed × 55% (5% on fest eve) + waitlisted × 20%, from 2025 show-up.', true)}</th><th class="n">${end ? 'Cost per attendee' : 'Cost per attendee (est.)'}${info('Spent ÷ attendees. For bets it is spend ÷ extra attendees (beyond what the comparison group shows).', true)}</th><th>Verdict</th></tr>
+  ${groups.map(([name, list]) => (name ? `<tr><td colspan="7" class="note" style="background:#fff;font-weight:600;padding-top:14px">${esc(name)}</td></tr>` : '') + list.map(tr).join('')).join('')}</table></div>
+  <p class="note" style="margin-top:10px">A campaign's credit links a person to it; it does not prove the campaign caused the visit. Bets prove cause with a comparison group.</p>`;
 };
 PAGES.bets = () => {
   const ds = S.ds, D = S.asOf, A = assump(), rows = E.betRows(ds, D, A), rp = E.reservePlan(ds, D, A);
-  if (!rows.length) return `<h1>Bets</h1><p class="sub">This dataset has no bets. Switch to the 2027 plan.</p>`;
-  const ready = rp.suggestions;
-  return `<h1>${ready.length ? esc(ready.map(r => r.bet).join(' and ')) + (ready.length > 1 ? ' are' : ' is') + ' ready for reserve money' : 'No bet is ready for reserve money yet'}</h1>
-  <p class="sub">Each bet runs in test colleges and is compared with similar colleges that don't get it. The gap is the bet's extra people. Reserve money goes first to the bet whose <i>next</i> extra person is cheapest, if that stays under its cap. Reserve left: <b>${lakh(rp.reserve_left)}</b> of ${lakh(rp.reserve_total)}.</p>
-  <div class="scroll"><table><tr><th>Bet</th><th class="n" title="Share of people who registered">Registered: test vs comparison</th><th class="n" title="How sure we are the gap is real, not luck">Confidence</th><th class="n">Extra attendees${tag('A')}</th><th class="n">Cost per extra</th><th class="n" title="Estimated cost of the next extra person (returns shrink as spend grows) vs the bet's cap">Next extra / cap${tag('A')}</th><th>Decision</th></tr>
+  if (!rows.length) return head('Bets', 'This dataset has no bets. Switch to the 2027 plan.');
+  const ready = rp.suggestions, f = fcAt(D);
+  const t = ready.length ? esc(ready.map(r => r.bet).join(' and ')) + (ready.length > 1 ? ' are' : ' is') + ' ready for reserve money' : ended() ? 'How the bets did' : 'No bet is ready for reserve money now';
+  return `${head(t, `Each bet runs in some colleges (test) and is compared with similar colleges that don't get it (comparison). The gap is the bet's extra people. Reserve left: <b>${lakh(rp.reserve_left)}</b> of ${lakh(rp.reserve_total)}.`)}
+  <div class="scroll"><table><tr><th>Bet</th><th class="n">Registered: test vs comparison${info('Share of people in each group who registered.', true)}</th><th class="n">Is the gap real?${info('How likely the gap is real and not luck. High = 90%+ likely, Medium = 80–90%, Low = under 80%. ₹1L releases need High; ₹50k needs at least Medium.', true)}</th><th class="n">Extra attendees${info('People in test colleges × (test rate − comparison rate) × the chance each registrant comes. Range: from the low to the high end of the gap.', true)}</th><th class="n">Cost per extra</th><th class="n">Next extra / limit${info('What the next extra person would cost if we add money. Returns shrink as spend grows, so it costs more than the average so far. Money only goes in while this is under the limit.', true)}</th><th>Decision</th></tr>
   ${rows.map(b => `<tr class="click" data-act="bet" data-id="${esc(b.campaign_id)}" tabindex="0"><td><b>${esc(b.rank + '. ' + b.bet)}</b><div class="note">${esc(b.owner)} · ${esc(b.type)}${b.audience === 'our students' ? ' · our students' : ''}</div></td>
-  <td class="n">${b.test_rate !== null ? pct(b.test_rate) + ' vs ' + pct(b.comparison_rate) : fmt(b.test_registered) + ' sign-ups'}<div class="note">${b.test_rate !== null ? fmt(b.test_people) + ' vs ' + fmt(b.comparison_people) + ' people' : 'direct sign-ups'}</div></td>
-  <td class="n">${b.sure_lift_above_zero !== null ? sure(b.sure_lift_above_zero) : 'no comparison'}</td><td class="n">${fmt(b.expected_extra_attendees)}</td><td class="n">${inr(b.cost_per_extra)}</td><td class="n">${inr(b.next_tranche_cost)} / ${inr(b.cost_cap_inr)}</td>
-  <td><span class="${vcls(b.decision)}">${esc(b.decision)}</span><div class="note">${esc(b.decision === 'Scale' ? 'Gets reserve money' : b.decision === 'Keep' ? 'Works; next rupee too costly' : b.decision === 'Too early' ? 'Not enough evidence yet' : b.decision === 'Change' ? 'Costs more than its cap' : 'No lift')}</div></td></tr>`).join('')}</table></div>
-  ${ready.length ? `<div class="card" style="margin-top:18px"><h2>Suggested reserve release</h2>${ready.map(r => `<div class="flag"><div class="t">${esc(r.bet)}: release ${inr(r.amount)}</div><div class="e">Next extra person costs about ${inr(r.next_tranche_cost)} vs a ${inr(r.cap)} cap · ${sure(r.sure)} confidence</div><button class="btn sm" data-act="release" data-id="${esc(r.campaign_id)}" data-amt="${r.amount}" type="button">Release ${esc(lakh(r.amount))}</button></div>`).join('')}<p class="note" style="margin-top:8px">₹1L releases need 90%+ confidence; the owner also checks the gain holds in both near and far colleges.</p></div>` : ''}`;
+  <td class="n">${b.test_rate !== null ? pct(b.test_rate) + ' vs ' + pct(b.comparison_rate) : fmt(b.test_registered) + ' sign-ups'}<div class="note">${b.test_rate !== null ? fmt(b.test_people) + ' vs ' + fmt(b.comparison_people) + ' people' : 'no comparison group'}</div></td>
+  <td class="n">${b.gap_real ? `<span class="g-${b.gap_real}">${b.gap_real}</span>` : '<span class="note">no comparison</span>'}</td><td class="n">${b.expected_extra_low !== null ? `${fmt(Math.max(0, b.expected_extra_attendees))}<div class="note">${fmt(b.expected_extra_low)}–${fmt(b.expected_extra_high)}</div>` : fmt(b.expected_extra_attendees) + '<div class="note">all sign-ups</div>'}</td><td class="n">${inr(b.cost_per_extra)}</td><td class="n">${inr(b.next_tranche_cost)} / ${inr(b.cost_cap_inr)}</td>
+  <td><span class="${vcls(b.decision)}">${esc(b.decision)}</span><div class="note">${esc(b.decision === 'Too early' ? b.evidence_gaps[0] : BET_NOTE[b.decision])}</div></td></tr>`).join('')}</table></div>
+  ${ready.length ? `<div class="card" style="margin-top:18px"><h2>Suggested reserve release</h2>${ready.map(r => { const a = fcAt(D, [{ amount: r.amount, cost: r.next_tranche_cost }]); return `<div class="flag"><div class="t">${esc(r.bet)}: release ${lakh(r.amount)}</div><div class="e">Next extra person ≈ ${inr(r.next_tranche_cost)} vs a ${inr(r.cap)} limit · gap ${esc(r.gap_real)}. Forecast: most likely ${fmt(f.likely)} → <b>${fmt(a.likely)}</b>, ${pill(f.verdict)} → ${pill(a.verdict)}</div><button class="btn sm" data-act="release" data-id="${esc(r.campaign_id)}" data-amt="${r.amount}" type="button">Release ${esc(lakh(r.amount))}</button></div>`; }).join('')}<p class="note" style="margin-top:8px">Rule: ${esc(rp.rule)}</p></div>` : ''}
+  <details style="margin-top:18px"><summary>How a bet is judged, in four steps</summary><ol><li><b>Fair test?</b> 300+ people in each group and 2+ weeks live. If not: Too early.</li><li><b>Real gap?</b> At least 80% likely. If not, after a fair test: Stop.</li><li><b>Worth it?</b> Cost per extra attendee under the bet's limit. If not: Change.</li><li><b>More money?</b> If the next extra attendee is also under the limit: Scale (gets reserve). Otherwise Keep.</li></ol></details>`;
 };
 function betDrawer(id) {
   const b = E.betRows(S.ds, S.asOf, assump()).find(x => x.campaign_id === id); if (!b) return '';
   return `<p>${esc(b.test_design)}</p><table><tr><td>Live for</td><td class="n">${b.weeks_live} weeks</td></tr><tr><td>Spent / planned</td><td class="n">${inr(b.spend)} / ${inr(b.planned_budget_inr)}</td></tr>${b.reserve_released_inr ? `<tr><td>Reserve released</td><td class="n">${inr(b.reserve_released_inr)}</td></tr>` : ''}
-  <tr><td>Test group</td><td class="n">${fmt(b.test_registered)} of ${fmt(b.test_people)}${b.test_rate !== null ? ' (' + pct(b.test_rate, 1) + ')' : ''}</td></tr>${b.comparison_people !== null ? `<tr><td>Comparison group</td><td class="n">${fmt(b.comparison_registered)} of ${fmt(b.comparison_people)} (${pct(b.comparison_rate, 1)})</td></tr><tr><td>Lift</td><td class="n">${pct(b.lift, 1)} · ${sure(b.sure_lift_above_zero)} sure</td></tr>` : ''}
-  <tr><td>Extra registrations</td><td class="n">${fmt(b.extra_registrations)}</td></tr><tr><td>Attend per registrant (A)</td><td class="n">${ok(b.attendees_per_registrant) ? b.attendees_per_registrant.toFixed(2) : '–'}</td></tr><tr><td>Expected extra attendees (A)</td><td class="n">${fmt(b.expected_extra_attendees)}${b.expected_extra_low !== null ? ' (low ' + fmt(b.expected_extra_low) + ')' : ''}</td></tr>
-  <tr><td>Cost per extra</td><td class="n">${inr(b.cost_per_extra)}${b.cost_per_extra_low_end ? ' (low-end ' + inr(b.cost_per_extra_low_end) + ')' : ''}</td></tr><tr><td>Next-tranche cost (÷ ${b.scale_factor})</td><td class="n">${inr(b.next_tranche_cost)}</td></tr><tr><td>Cap</td><td class="n">${inr(b.cost_cap_inr)}</td></tr></table>
+  <tr><td>Test group</td><td class="n">${fmt(b.test_registered)} of ${fmt(b.test_people)}${b.test_rate !== null ? ' (' + pct(b.test_rate, 1) + ')' : ''}</td></tr>${b.comparison_people !== null ? `<tr><td>Comparison group</td><td class="n">${fmt(b.comparison_registered)} of ${fmt(b.comparison_people)} (${pct(b.comparison_rate, 1)})</td></tr><tr><td>Gap</td><td class="n">${pct(b.lift, 1)} · ${esc(b.gap_real)}</td></tr>` : ''}
+  <tr><td>Extra registrations</td><td class="n">${fmt(b.extra_registrations)}</td></tr><tr><td>Chance each registrant comes (est.)</td><td class="n">${ok(b.attendees_per_registrant) ? pct(b.attendees_per_registrant) : '–'}</td></tr><tr><td>Extra attendees (est.)</td><td class="n">${fmt(b.expected_extra_attendees)}${b.expected_extra_low !== null ? ' (' + fmt(b.expected_extra_low) + '–' + fmt(b.expected_extra_high) + ')' : ''}</td></tr>
+  <tr><td>Cost per extra attendee</td><td class="n">${inr(b.cost_per_extra)}</td></tr><tr><td>Next extra attendee (÷ ${b.scale_factor} for shrinking returns)</td><td class="n">${inr(b.next_tranche_cost)}</td></tr><tr><td>Limit</td><td class="n">${inr(b.cost_cap_inr)}</td></tr></table>
   <p style="margin-top:12px"><span class="${vcls(b.decision)}">${esc(b.decision)}</span>: ${esc(b.why)}.</p>
   <div class="row"><button class="btn" data-act="draft" data-kind="task" data-camp="${esc(id)}" type="button">Create a task</button><button class="btn ghost" data-act="ask" data-q="${esc('Explain the ' + b.bet + ' bet: is it working and what should we do with it?')}" type="button">Ask the analyst</button></div>`;
 }
 
-PAGES.signals = () => {
-  const g = groupFlags(E.flags(S.ds, S.asOf, rules(), assump()));
-  return `<h1>Signals</h1><p class="sub"><b>Act</b> = decide now · <b>Warn</b> = owner fixes it this week · <b>Watch</b> = keep an eye on it. Groups under ${rules().min_people.value} people are not judged.</p>
-  <div class="card">${g.length ? g.map(x => groupRow(x, true)).join('') : '<p class="empty">No signals at this date.</p>'}</div>`;
+PAGES.insights = () => {
+  const ds = S.ds, D = S.asOf, A = assump(), fl = E.flags(ds, D, rules(), A), g = groupFlags(fl), end = ended();
+  const bets = hasBets() ? E.betRows(ds, D, A) : [], rows = E.campaignRows(ds, D, { assumptions: A }).filter(r => r.campaign_id && r.kind !== 'bet' && r.status !== 'stopped'), cap = A.cost_cap.value;
+  const work = bets.filter(b => b.decision === 'Scale' || b.decision === 'Keep').map(b => ({ n: b.bet, r: b.decision === 'Scale' ? `${fmt(b.expected_extra_attendees)} extra attendees at ${inr(b.cost_per_extra)} each; the next one ≈ ${inr(b.next_tranche_cost)}, under its ${inr(b.cost_cap_inr)} limit` : `${fmt(b.expected_extra_attendees)} extra attendees at ${inr(b.cost_per_extra)} each, under its ${inr(b.cost_cap_inr)} limit`, why: b.test_rate !== null ? `Test colleges registered at ${pct(b.test_rate)} vs ${pct(b.comparison_rate)} in similar colleges without it (gap ${b.gap_real}).` : 'All its sign-ups count (no comparison group).' }))
+    .concat(rows.filter(r => { const c = end ? r.cost_per_visitor : r.cost_per_expected_visitor; return ok(c) && c <= cap && (end ? r.visitors : r.expected_visitors) >= 30; }).map(r => { const c = end ? r.cost_per_visitor : r.cost_per_expected_visitor; return { n: r.campaign, r: `${inr(c)} per ${end ? '' : 'expected '}attendee, under the ${inr(cap)} limit`, why: `${fmt(r.registered)} registered, ${fmt(end ? r.visitors : r.expected_visitors)} ${end ? 'came' : 'expected'}. Credit is a link, not proof of cause.` }; }));
+  const notw = g.filter(x => x.level !== 'watch'), early = g.filter(x => x.level === 'watch');
+  const item = x => `<div class="flag"><div class="t"><span class="lvl ${x.level}">${x.level}</span>${esc(x.subj)}</div>${x.items.map(f => `<div class="e">${esc(f.reason)}</div>`).join('')}${actButtons(x.items[0], true)}</div>`;
+  return `${head('Insights', 'What is working, what is not, and why. <b>Act</b> = decide now · <b>Warn</b> = owner fixes it this week · <b>Watch</b> = keep an eye on it. Groups under 30 people are not judged.')}
+  <div class="three"><div class="card"><h2 class="good">Working</h2>${work.length ? work.map(w => `<div class="flag"><div class="t">${esc(w.n)}</div><div class="e">${esc(w.r)}</div><div class="e">${esc(w.why)}</div></div>`).join('') : '<p class="empty">Nothing proven yet.</p>'}</div>
+  <div class="card"><h2 class="bad">Not working</h2>${notw.length ? notw.map(item).join('') : '<p class="empty">Nothing at Warn or Act.</p>'}</div>
+  <div class="card"><h2>Watch / too early</h2>${early.length ? early.map(item).join('') : '<p class="empty">Nothing to watch.</p>'}</div></div>`;
 };
+
+PAGES.money = () => {
+  const ds = S.ds, D = S.asOf, A = assump(), b = E.budget(ds, D), end = ended(), cap = A.cost_cap.value;
+  const rows = E.campaignRows(ds, D, { assumptions: A }).filter(r => r.campaign_id), bets = hasBets() ? E.betRows(ds, D, A) : [];
+  const plannedLeft = rows.reduce((a, r) => a + Math.max(0, (r.status === 'stopped' ? r.spend : (r.planned_budget_inr || 0)) - r.spend), 0);
+  const resLeft = hasBets() ? E.reserveLeft(ds, D) : 0, free = Math.max(0, b.approved - b.spent - plannedLeft - resLeft);
+  const seg = [['Spent', b.spent, '#111418'], ['Planned, not yet spent', plannedLeft, '#9aa3ad'], ['Reserve not released', resLeft, '#2f6fed'], ['Not planned', free, '#e6e8eb']].filter(x => x[1] > 0);
+  const ppl = r => { const bt = bets.find(x => x.campaign_id === r.campaign_id); return bt ? Math.max(0, bt.expected_extra_attendees) : end ? r.visitors : r.expected_visitors; };
+  const each = r => { const bt = bets.find(x => x.campaign_id === r.campaign_id); return bt ? bt.cost_per_extra : end ? r.cost_per_visitor : r.cost_per_expected_visitor; };
+  const limit = r => r.cost_cap_inr || cap, mxS = Math.max(...rows.map(r => r.spend), 1), mxP = Math.max(...rows.map(ppl), 1);
+  const log = (sim() ? E.planDecisionsAt(ds, D).filter(p => ['release_reserve', 'hold', 'set_planned_budget', 'stop'].includes(p.kind)).map(p => ({ d: p.decided_at, t: p.title, src: 'plan' })) : [])
+    .concat(S.decisions.filter(d => (d.base || '25') === baseOf() && d.as_of <= D && ['release_reserve', 'move_budget', 'set_planned_budget'].includes(d.kind)).map(d => ({ d: d.as_of, t: d.title, src: 'you' }))).sort((x, y) => x.d.localeCompare(y.d));
+  const best = bets.filter(x => x.decision === 'Scale').sort((x, y) => x.next_tranche_cost - y.next_tranche_cost)[0];
+  return `${head('Money', `Where each rupee went and what it is bringing back. Budget ${lakh(b.approved)}${hasBets() ? `, including a ${lakh(ds.event.reserve)} reserve held back for bets that prove themselves` : ''}.`)}
+  <div class="card"><h2>The budget today ${info('Spent = net marketing spend so far. Planned = what each campaign still has in its plan. Reserve = money only released to proven bets at the reviews.')}</h2><div class="stackbar">${seg.map(([l, v, c]) => `<i style="width:${(v / b.approved * 100).toFixed(2)}%;background:${c}" title="${esc(l + ': ' + lakh(v))}"></i>`).join('')}</div>
+  <div class="legend">${seg.map(([l, v, c]) => `<span><i class="sw" style="background:${c}"></i>${esc(l)} <b>${lakh(v)}</b></span>`).join('')}</div></div>
+  <div class="card" style="margin-top:16px"><h2>Money in, people out ${info(end ? 'Left: spend. Right: people who came (for bets: extra attendees beyond the comparison group). Red cost = above its limit.' : 'Left: spend so far. Right: expected attendees (for bets: extra attendees beyond the comparison group). Red cost = above its limit.')}</h2>
+  <div class="fly"><div class="fh"><span>Spent</span><span></span><span>${end ? 'Attendees' : 'Expected attendees'}</span><span>Each</span></div>
+  ${rows.map(r => { const c = each(r), bt = bets.find(x => x.campaign_id === r.campaign_id), early = bt && bt.decision === 'Too early', over = !early && ok(c) && c > limit(r); return `<div class="fr2"><div class="lb"><i style="width:${(r.spend / mxS * 100).toFixed(1)}%"></i><span>${money(r.spend)}</span></div><div class="nm">${esc(r.campaign)}${r.status === 'stopped' ? ' <span class="label">stopped</span>' : ''}${r.kind === 'bet' ? '<span class="note"> · extra</span>' : ''}</div><div class="rb"><i style="width:${(ppl(r) / mxP * 100).toFixed(1)}%"></i><span>${fmt(ppl(r))}</span></div><div class="ce ${over ? 'over' : ''}">${early ? '<span class="note">too early</span>' : ok(c) && r.spend ? inr(c) : '–'}<span class="note"> / ${inr(limit(r))}</span></div></div>`; }).join('')}</div></div>
+  ${hasBets() ? `<div class="card" style="margin-top:16px"><h2>Reserve: who got it and why</h2>${log.length ? `<ul class="plain">${log.map(x => `<li><span class="note">${esc(dshort(x.d))}</span> ${esc(x.t)} <span class="label">${x.src}</span></li>`).join('')}</ul>` : '<p class="empty">Nothing released yet. Releases happen at the reviews (weeks 10, 12, 14).</p>'}
+  <p class="note">${best ? `The next ₹1L would go to ${esc(best.bet)}: about ${fmt(100000 / best.next_tranche_cost * 0.8)} extra attendees (est.; ${fmt(100000 / best.next_tranche_cost * 0.5)}–${fmt(100000 / best.next_tranche_cost)}), with the next one costing ≈ ${inr(best.next_tranche_cost)}.` : 'No bet is under its limit for the next rupee right now, so the reserve stays put.'}</p></div>` : ''}`;
+};
+
 PAGES.tasks = () => {
-  const b = baseOf(), tasks = S.tasks.filter(t => (t.base || '25') === b), decs = S.decisions.filter(d => (d.base || '25') === b).sort((x, y) => (y.created_at || '').localeCompare(x.created_at || ''));
-  const card = t => { const over = t.status !== 'done' && t.due && t.due < S.asOf, dec = S.decisions.find(d => d.id === t.decision_id), due = dec && dec.status !== 'reviewed' && dec.review_date && S.asOf >= dec.review_date;
-    return `<div class="task ${over ? 'over' : ''}"><b>${esc(t.title)}</b><div class="m">${esc(ownerLabel(t.owner))} · due ${esc(dshort(t.due))}${over ? ' · <span style="color:var(--act)">overdue</span>' : ''}${t.campaign_id ? ' · ' + esc(E.campName(S.ds, t.campaign_id)) : ''}</div>
-    <div class="row">${t.status !== 'todo' ? `<button class="btn ghost sm" data-act="tmove" data-id="${esc(t.id)}" data-d="-1" type="button" aria-label="Move back">←</button>` : ''}${t.status !== 'done' ? `<button class="btn ghost sm" data-act="tmove" data-id="${esc(t.id)}" data-d="1" type="button">${t.status === 'todo' ? 'Start' : 'Done'} →</button>` : ''}${due ? `<button class="btn sm" data-act="review" data-id="${esc(dec.id)}" type="button">Review result</button>` : ''}<button class="btn ghost sm" data-act="tdel" data-id="${esc(t.id)}" type="button">Delete</button></div></div>`; };
-  return `<h1>Tasks</h1><p class="sub">Each confirmed action adds a task and a logged decision. On its review date the decision compares the number it watches before and after.</p>
+  const b = baseOf(), D = S.asOf, tasks = S.tasks.filter(t => (t.base || '25') === b).sort((x, y) => (tStatus(x) === 'done') - (tStatus(y) === 'done') || (x.due || '').localeCompare(y.due || ''));
+  const decs = S.decisions.filter(d => (d.base || '25') === b).sort((x, y) => (y.created_at || '').localeCompare(x.created_at || ''));
+  const plan = sim() ? E.planDecisionsAt(S.ds, D).slice().reverse() : [];
+  const st = { todo: 'To do', doing: 'Doing', done: 'Done' };
+  return `${head('Tasks', 'Who is doing what, and the decisions behind it. Edit any cell; it saves straight away.')}
   ${S.review ? reviewPanel(S.review) : ''}
-  <div class="row" style="margin-bottom:12px"><button class="btn" data-act="draft" data-kind="task" type="button">Add task</button></div>
-  <div class="board">${[['todo', 'To do'], ['doing', 'Doing'], ['done', 'Done']].map(([k, l]) => `<div class="col"><h3>${l} · ${tasks.filter(t => t.status === k).length}</h3>${tasks.filter(t => t.status === k).sort((x, y) => (x.due || '').localeCompare(y.due || '')).map(card).join('') || '<p class="note">Nothing here.</p>'}</div>`).join('')}</div>
-  <h2 style="margin-top:26px">Decision log</h2>${decs.length ? `<div class="scroll"><table><tr><th>Decided</th><th>Decision</th><th>Watching</th><th class="n">Then</th><th class="n">Now</th><th>Result</th></tr>${decs.map(d => `<tr><td>${esc(dshort(d.as_of))}</td><td>${esc(d.title)}</td><td class="note">${esc(metricLabel(d.metric))}<br>review ${esc(dshort(d.review_date))}</td><td class="n">${esc(mfmt(d.metric, d.metric && d.metric.before))}</td><td class="n">${esc(mfmt(d.metric, metricNow(d.metric)))}</td><td>${d.status === 'reviewed' ? esc(d.outcome) : d.review_date && S.asOf >= d.review_date ? `<button class="btn sm" data-act="review" data-id="${esc(d.id)}" type="button">Review</button>` : '<span class="note">waiting</span>'}</td></tr>`).join('')}</table></div>` : '<p class="empty">No decisions yet. Use "Act on this" on a signal, or release reserve on the Bets page.</p>'}
-  <p class="note" style="margin-top:10px">To see a follow-up now: set the date back a week or two, act on a signal, then move the date forward.</p>`;
+  <form class="addt" data-form="addtask"><input name="title" placeholder="New task…" required maxlength="160" aria-label="New task"><select name="owner" aria-label="Owner">${ownerOptions('GL')}</select><input type="date" name="due" value="${esc(E.addDays(D, 3))}" aria-label="Due"><button class="btn" type="submit">Add</button></form>
+  <div class="scroll"><table class="tasks"><tr><th>Task</th><th style="width:200px">Owner</th><th style="width:150px">Due</th><th style="width:110px">Status</th><th style="width:80px"></th></tr>
+  ${tasks.length ? tasks.map(t => { const ts = tStatus(t); return `<tr class="${ts === 'done' ? 'done' : t.due && t.due < D ? 'late' : ''}"><td><input data-t="${esc(t.id)}" data-f="title" value="${esc(t.title)}" aria-label="Task">${t.source && t.source !== 'manual' ? `<div class="note">from ${esc(t.source === 'plan' ? 'the plan' : t.source === 'signal' ? 'a signal' : t.source)}${t.campaign_id ? ' · ' + esc(E.campName(S.ds, t.campaign_id)) : ''}</div>` : ''}</td>
+  <td><select data-t="${esc(t.id)}" data-f="owner" aria-label="Owner">${ownerOptions(t.owner)}</select></td><td><input type="date" data-t="${esc(t.id)}" data-f="due" value="${esc(t.due || '')}" aria-label="Due">${ts !== 'done' && t.due && t.due < D ? '<div class="note" style="color:var(--act)">late</div>' : ts !== t.status ? '<div class="note">done in the rehearsal</div>' : ''}</td>
+  <td><select data-t="${esc(t.id)}" data-f="status" aria-label="Status">${Object.keys(st).map(k => `<option value="${k}" ${ts === k ? 'selected' : ''}>${st[k]}</option>`).join('')}</select></td><td><button class="btn ghost sm" data-act="tdel" data-id="${esc(t.id)}" type="button" aria-label="Delete task">Delete</button></td></tr>`; }).join('') : '<tr><td colspan="5" class="empty">No tasks yet.</td></tr>'}</table></div>
+  <h2 style="margin-top:26px">Decision log ${info('Every confirmed action is logged with the number it should move. On its review date we compare that number then and now. A before/after reading is a hint, not proof the action caused it.')}</h2>
+  ${decs.length || plan.length ? `<div class="scroll"><table><tr><th>Decided</th><th>Decision</th><th>Watching</th><th class="n">Then</th><th class="n">Now</th><th>Result</th></tr>
+  ${decs.map(d => `<tr><td>${esc(dshort(d.as_of))}</td><td>${esc(d.title)}</td><td class="note">${esc(metricLabel(d.metric))}<br>review ${esc(dshort(d.review_date))}</td><td class="n">${esc(mfmt(d.metric, d.metric && d.metric.before))}</td><td class="n">${esc(mfmt(d.metric, metricNow(d.metric)))}</td><td>${d.status === 'reviewed' ? esc(d.outcome) : d.review_date && D >= d.review_date ? `<button class="btn sm" data-act="review" data-id="${esc(d.id)}" type="button">Review</button>` : '<span class="note">waiting</span>'}</td></tr>`).join('')}
+  ${plan.map(p => { const m = p.metric_key && METRICS[p.metric_key] ? { key: p.metric_key, campaign_id: p.campaign_id || null } : null, then = m ? metricValue(S.ds, E.addDays(p.decided_at.slice(0, 10), -1), m) : null, now = m ? metricNow(m) : null, rv = p.review_at && D >= p.review_at.slice(0, 10); return `<tr><td>${esc(dshort(p.decided_at))} <span class="label">plan</span></td><td>${esc(p.title)}<div class="note">${esc(p.reason)}</div></td><td class="note">${m ? esc(metricLabel(m)) : '–'}<br>review ${esc(dshort(p.review_at))}</td><td class="n">${esc(mfmt(m, then))}</td><td class="n">${esc(mfmt(m, now))}</td><td>${rv ? esc(planOutcome(m, then, now)) : '<span class="note">waiting</span>'}</td></tr>`; }).join('')}</table></div>` : '<p class="empty">No decisions yet. Use "Act on this" on Overview or Insights, or release reserve on the Bets page.</p>'}
+  <p class="note" style="margin-top:10px">To see a follow-up now: act on something, then move the date forward past its review date.</p>`;
 };
-const METRICS = { registered: 'Registered', confirmed: 'Confirmed', expected_visitors: 'Expected visitors', cost_per_expected_visitor: 'Cost per expected visitor', cost_per_visitor: 'Cost per visitor', showup: 'Show-up', cancel_rate: 'Cancellation rate', opt_out_rate: 'Opt-out rate', spend: 'Spend', expected_extra_attendees: 'Expected extra attendees (bet)', cost_per_extra: 'Cost per extra attendee (bet)' };
+function planOutcome(m, then, now) {
+  if (!m || !ok(then) || !ok(now)) return 'Reviewed';
+  const lowerBetter = /cost|rate/.test(m.key), better = lowerBetter ? now < then : now > then;
+  return (better ? 'Moved the right way' : 'No improvement') + ' (' + mfmt(m, then) + ' → ' + mfmt(m, now) + ')';
+}
+const METRICS = { registered: 'Registered', confirmed: 'Confirmed', expected_visitors: 'Expected attendees', cost_per_expected_visitor: 'Cost per expected attendee', cost_per_visitor: 'Cost per attendee', showup: 'Show-up', cancel_rate: 'Cancellation rate', opt_out_rate: 'Opt-out rate', spend: 'Spend', expected_extra_attendees: 'Extra attendees (bet)', cost_per_extra: 'Cost per extra attendee (bet)' };
 function metricLabel(m) { return m && m.key ? METRICS[m.key] + ' · ' + (m.campaign_id ? E.campName(S.ds, m.campaign_id) : 'all') : '–'; }
 function metricValue(ds, D, m) {
   if (!m || !m.key) return null; const A = assump();
   if (m.key === 'expected_extra_attendees' || m.key === 'cost_per_extra') { const b = E.betRows(ds, D, A).find(x => x.campaign_id === m.campaign_id); return b ? b[m.key] : null; }
   if (m.campaign_id) { const r = E.campaignRows(ds, D, { assumptions: A }).find(x => x.campaign_id === m.campaign_id); return r ? r[m.key] : null; }
-  const k = E.kpis(ds, D, A); return { registered: k.registered, confirmed: k.status.confirmed, expected_visitors: k.projection.likely, cost_per_visitor: k.costPerVisitor, showup: k.showup, spend: k.spend, cancel_rate: k.registered ? k.status.cancelled / k.registered : null }[m.key];
+  const k = E.kpis(ds, D, A); return { registered: k.registered, confirmed: k.status.confirmed, expected_visitors: k.projection.likely, cost_per_visitor: k.costPerVisitor, cost_per_expected_visitor: k.costPerAttendee, showup: k.showup, spend: k.spend, cancel_rate: k.registered ? k.status.cancelled / k.registered : null }[m.key];
 }
 const metricNow = m => metricValue(S.ds, S.asOf, m);
 function mfmt(m, v) { if (!m || !ok(v)) return '–'; if (/rate|showup/.test(m.key)) return pct(v, 1); if (/cost|spend/.test(m.key)) return inr(v); return fmt(v); }
@@ -330,51 +497,47 @@ function reviewPanel(id) {
 
 PAGES.event = () => {
   const ds = S.ds, D = S.asOf, A = assump(), d = E.dayStats(ds, D, A), cap = d.gate_capacity_assumed;
-  if (D < ds.event.eventStartDay || !d.verified_entries) return `<h1>Event days</h1><p class="sub">No check-ins at this date. Move the date to the event days.</p>`;
-  const hrs = d.hours; setTimeout(() => mount('hourChart', s => colChart(s, { labels: hrs.map(h => h.hour), values: hrs.map(h => h.entries), cap, capLabel: 'safe gate capacity ' + cap + '/hr (A)', short: l => l.slice(8, 10) + ' ' + l.slice(11, 13) + 'h' })), 0);
-  return `<h1>${fmt(d.unique_visitors)} unique outside visitors; peak ${d.peak_hour ? fmt(d.peak_hour.entries) + ' entries at ' + esc(d.peak_hour.hour.slice(11)) + ', ' + esc(dshort(d.peak_hour.hour)) : '–'}</h1>
-  <div class="kpis">${d.by_day.map(x => kpi(dshort(x.day), fmt(x.unique_visitors), 'unique visitors', 'S')).join('')}${kpi('Both days', fmt(d.both_days), pct(d.unique_visitors ? d.both_days / d.unique_visitors : null) + ' of visitors', 'S')}${kpi('Peak vs gate capacity', pct(d.peak_vs_capacity), cap + ' per hour', 'A')}</div>
-  <div class="card"><h2>Verified entries per hour</h2><div class="fig" style="min-height:240px"><svg id="hourChart" role="img" aria-label="Entries per hour"></svg></div><p class="note">Growth flags gate load; security and operations decide on the day.</p></div>`;
+  if (D < ds.event.eventStartDay || !d.verified_entries) return head('Fest days', 'No check-ins at this date. Move the date to the fest days.');
+  const hrs = d.hours; setTimeout(() => mount('hourChart', s => colChart(s, { labels: hrs.map(h => h.hour), values: hrs.map(h => h.entries), cap: cap <= Math.max(...hrs.map(h => h.entries)) * 3 ? cap : null, capLabel: 'safe gate capacity ' + fmt(cap) + '/hr', short: l => l.slice(8, 10) + ' ' + l.slice(11, 13) + 'h' })), 0);
+  return `${head(`${fmt(d.unique_visitors)} outside visitors; busiest hour ${d.peak_hour ? fmt(d.peak_hour.entries) + ' entries at ' + esc(d.peak_hour.hour.slice(11)) + ', ' + esc(dshort(d.peak_hour.hour)) : '–'}`, 'Verified gate entries by hour. Growth flags gate load; security and operations decide on the day.')}
+  <div class="kpis">${d.by_day.map(x => kpi(dshort(x.day), fmt(x.unique_visitors), 'unique visitors')).join('')}${kpi('Both days', fmt(d.both_days), pct(d.unique_visitors ? d.both_days / d.unique_visitors : null) + ' of visitors')}${kpi('Busiest hour vs gates', pct(d.peak_vs_capacity), 'safe ' + fmt(cap) + ' per hour', 'Entries in the busiest hour ÷ what the gates can safely take in an hour.')}</div>
+  <div class="card"><h2>Verified entries per hour</h2><div class="fig" style="min-height:240px"><svg id="hourChart" role="img" aria-label="Entries per hour"></svg></div></div>`;
 };
 
 PAGES.data = () => {
-  const ds = S.ds, q = E.quality(ds, S.asOf), A = assump(), R = rules(), hist = S.edits.filter(e => (e.base || '25') === baseOf()).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
-  return `<h1>Data</h1>
-  <div class="card" style="margin-bottom:14px"><h2>What you are looking at</h2>
-  <p><b>2027 plan (simulated)</b>: our plan for CampusFest 2027 running in New Delhi. It stops at week 10 of 15, today in the simulation, the week the first reserve money is decided. Campaigns, bets, owners, budgets, caps and targets come from our plan. People, registrations and spend are generated to test it; they are not real.</p>
-  <p><b>2025 actual</b>: the provided dataset, kept locked for testing. Your changes are saved as edits on top of it; the button next to the dataset switches between the original and your edits.</p>
-  <p class="note">Every change is an edit you can undo below. To test with your own workbook (same sheets as the 2025 file), import it here; it stays for this visit only.</p>
-  <label class="l" style="max-width:360px">Import a workbook (.xlsx)<input type="file" id="importFile" accept=".xlsx,.xls"></label><p class="note" id="importMsg">${S.importRaw ? 'Loaded: ' + esc(S.importName) : ''}</p>
+  const ds = S.ds, q = E.quality(ds, S.asOf), A = assump(), hist = S.edits.filter(e => (e.base || '25') === baseOf()).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+  return `${head('Data', 'What you are looking at, where the numbers come from, and how to change them.')}
+  <div class="card" style="margin-bottom:14px"><h2>Two datasets</h2>
+  <p><b>2027 plan (simulated)</b>: our plan for CampusFest 2027 in New Delhi. Week 1 starts 16 Nov 2026; exams in weeks 5–7; registrations open 4 Jan 2027 (week 8); the fest is Fri–Sat 26–27 Feb 2027 (week 15). Campaigns, bets, owners, budgets, limits and targets come from the plan. People, registrations, spend and check-ins are generated to test it; they are not real.</p>
+  <p><b>"Today" is the end of week 10</b> (24 Jan), the first money review: we stop there on purpose to show the decision with only the data known then. Dates after it are a rehearsal: one realistic run where the team takes the plan's decisions on time. It is not the best case: one bet fails, scaled bets do worse than their tests, and ₹1.5L of reserve stays unspent.</p>
+  <p><b>2025 actual</b>: the provided dataset, locked. Your changes are saved as edits on top of it; the button next to the dataset switches between the original and your edits.</p>
   ${q.validation.errors.length ? `<p style="color:var(--act)">Problems: ${esc(q.validation.errors.join('; '))}</p>` : ''}</div>
+  <details open><summary>Assumptions behind every estimate</summary><div class="scroll"><table><tr><th>Assumption</th><th class="n">Used</th><th class="n">Range in the forecast</th><th>Why we believe it</th></tr>${['showup_confirmed', 'showup_interested', 'showup_interested_late', 'showup_waitlisted', 'walkin_share', 'future_regs', 'release_yield', 'scale_factor'].map(k => { const a = A[k], p = k === 'future_regs' || k === 'scale_factor' || k === 'release_yield' ? v => '×' + v : v => pct(v); return `<tr><td>${esc(a.label)}</td><td class="n">${esc(p(a.value))}</td><td class="n">${esc(p(a.low))}–${esc(p(a.high))}</td><td class="note">${esc(a.evidence)}</td></tr>`; }).join('')}</table></div>
+  <p class="note">The gate limit is ${fmt(ds.event.gateCap || A.gate_capacity.value)} entries an hour for this dataset (${ds.event.gateCap ? '6 QR lanes at ~420 scans an hour each' : '2025 venue'}). Thresholds for Watch / Warn / Act are fixed in the plan.</p></details>
   <details><summary>What the words mean</summary><table>
-  <tr><td><b>Outside people</b></td><td>Students and visitors not from our own college. Staff, internal and test entries are never counted.</td></tr>
-  <tr><td><b>Registered / Confirmed</b></td><td>Signed up / said "I'm coming". In 2025, almost everyone who came had confirmed.</td></tr>
-  <tr><td><b>Came / visitor</b></td><td>Scanned in at the gate and verified. Counted once per person.</td></tr>
-  <tr><td><b>Expected to come (est.)</b></td><td>Confirmed × 75% + not yet confirmed × 40% + waitlisted × 25%, plus walk-ins. Editable below.</td></tr>
-  <tr><td><b>Base / stretch plan</b></td><td>Base = the number we commit to (7 in 10 simulation runs reach it). Stretch = the ambitious one (2 in 10).</td></tr>
+  <tr><td><b>Outside people</b></td><td>Students and visitors not from our own college. Staff, internal and test entries never count.</td></tr>
+  <tr><td><b>Registered / Confirmed</b></td><td>Signed up / said "I'm coming".</td></tr>
+  <tr><td><b>Came / attendee</b></td><td>Scanned in at the gate and verified. Counted once per person.</td></tr>
+  <tr><td><b>Forecast</b></td><td>The fest played 1,000 times with different luck. Bad luck: 1 in 10 runs did worse. Good luck: 1 in 10 did better.</td></tr>
+  <tr><td><b>Safe / At risk / Off track</b></td><td>Even bad luck beats the target / most likely beats it, bad luck doesn't / most likely misses it.</td></tr>
   <tr><td><b>Bet / test / comparison</b></td><td>A new idea, tried in some colleges (test) and compared with similar colleges that don't get it (comparison).</td></tr>
-  <tr><td><b>Extra attendees (est.)</b></td><td>People in test colleges × (test registration rate − comparison rate) × expected show-up.</td></tr>
-  <tr><td><b>Confidence</b></td><td>How sure we are the gap between test and comparison is real, not luck.</td></tr>
-  <tr><td><b>Next extra (est.)</b></td><td>What the next extra person would cost if we put more money in. Returns shrink, so it costs more than the average so far.</td></tr>
-  <tr><td><b>Cap</b></td><td>The most we will pay for one extra person in that bet or channel.</td></tr>
-  <tr><td><b>Reserve</b></td><td>₹3.5L held back and released after week 8 to bets that prove themselves.</td></tr>
-  <tr><td><b>Act / Warn / Watch</b></td><td>Decide now / owner fixes it this week / keep an eye on it.</td></tr>
-  </table></details>
+  <tr><td><b>Is the gap real?</b></td><td>How likely the test-vs-comparison gap is real, not luck: High 90%+, Medium 80–90%, Low under 80%.</td></tr>
+  <tr><td><b>Next extra</b></td><td>What the next extra person would cost if we add money. Returns shrink, so it costs more than the average so far.</td></tr>
+  <tr><td><b>Limit (cap)</b></td><td>The most we will pay for one extra person in that bet or channel.</td></tr>
+  <tr><td><b>Reserve</b></td><td>₹3.5L held back and only released at the reviews to bets that prove themselves.</td></tr>
+  <tr><td><b>Act / Warn / Watch</b></td><td>Decide now / owner fixes it this week / keep an eye on it.</td></tr></table></details>
   <details><summary>Edit history (${hist.length})</summary>${hist.length ? `<div class="scroll"><table><tr><th>When</th><th>Change</th><th></th></tr>${hist.map(e => `<tr style="${e.undone ? 'opacity:.45' : ''}"><td class="note">${esc(new Date(e.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</td><td>${esc(describeEdit(e))}${e.note ? `<div class="note">${esc(e.note)}</div>` : ''}</td><td><button class="btn ghost sm" data-act="undo" data-id="${esc(e.id)}" type="button">${e.undone ? 'Redo' : 'Undo'}</button></td></tr>`).join('')}</table></div>` : '<p class="empty">No edits on this dataset.</p>'}</details>
-  <details><summary>Change records</summary><div class="stack">
+  <details><summary>Change records (to test with changed data)</summary><div class="stack">
     <form class="f" data-form="status"><h3>Registration status</h3><div class="fr"><label class="l">Registration ID<input name="rid" required placeholder="e.g. R00002"></label><label class="l">New status<select name="status"><option>confirmed</option><option>interested</option><option>waitlisted</option><option>cancelled</option></select></label><label class="l">Effective<input type="datetime-local" name="t" value="${esc(S.asOf)}T12:00" required></label></div><button class="btn" type="submit">Save</button></form>
     <form class="f" data-form="checkin"><h3>Check-in</h3><div class="fr"><label class="l">Person ID<input name="person_id" required></label><label class="l">Time<input type="datetime-local" name="t" value="${esc(ds.event.eventStartDay)}T14:00" required></label></div><button class="btn" type="submit">Save</button></form>
     <form class="f" data-form="target"><h3>New target version</h3><div class="fr"><label class="l">Starts on<input type="date" name="date" value="${esc(S.asOf)}" required></label><label class="l">Name<input name="name" required value="Revised plan"></label><label class="l">Registrations<input type="number" name="r" min="0" required></label><label class="l">Outside attendees<input type="number" name="v" min="0" required></label><label class="l">Budget (₹)<input type="number" name="b" min="0" required></label></div><button class="btn" type="submit">Save</button></form></div></details>
-  <details><summary>Assumptions and thresholds</summary><div class="fr">${Object.keys(A).map(k => `<label class="l">${esc(A[k].label)}: <b>${esc(A[k].value)}</b><input type="range" data-set="assump" data-k="${esc(k)}" min="${esc(A[k].low)}" max="${esc(A[k].high)}" step="${A[k].value >= 10 ? 10 : 0.01}" value="${esc(A[k].value)}"></label>`).join('')}</div>
-  <div class="scroll" style="margin-top:14px"><table><tr><th>Signal</th><th class="n">Watch</th><th class="n">Warn</th><th class="n">Act</th></tr>${Object.keys(R).filter(k => k !== 'min_people').map(k => `<tr><td>${esc(R[k].label)}</td>${['watch', 'warn', 'act'].map(l => `<td class="n"><input type="number" step="0.01" style="width:72px" data-set="rule" data-k="${esc(k)}" data-l="${l}" value="${esc(R[k][l])}" aria-label="${esc(R[k].label + ' ' + l)}"></td>`).join('')}</tr>`).join('')}</table></div>
-  <div class="row" style="margin-top:10px"><button class="btn ghost sm" data-act="reset" type="button">Reset to defaults</button></div></details>
   <details><summary>Counting rules and cleaning</summary><ul>${q.rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul><p class="note">${Object.keys(q.duplicates_removed).filter(k => q.duplicates_removed[k]).map(k => q.duplicates_removed[k] + ' repeated ' + E.SHEETS[k] + ' rows removed').join(' · ') || 'No repeated rows.'} ${Object.keys(q.excluded_people).map(k => q.excluded_people[k] + ' ' + k + ' people excluded').join(' · ')}</p></details>
   ${testPanel()}`;
 };
 function describeEdit(e) {
   const p = e.payload || {}, cn = id => E.campName(S.ds, id);
   switch (e.type) {
-    case 'campaign_update': return cn(p.campaign_id) + ': ' + Object.keys(p.fields || {}).filter(k => k !== 'owner_name').map(k => ({ planned_budget_inr: 'planned budget', reserve_released_inr: 'reserve released', owner_id: 'owner' }[k] || k) + ' → ' + (k === 'owner_id' ? ownerLabel(p.fields[k]) : /inr/.test(k) ? inr(p.fields[k]) : p.fields[k])).join(', ');
+    case 'campaign_update': return cn(p.campaign_id) + ': ' + Object.keys(p.fields || {}).filter(k => k !== 'owner_name' && k !== 'reserve_released_at').map(k => ({ planned_budget_inr: 'planned budget', reserve_released_inr: 'reserve released', owner_id: 'owner' }[k] || k) + ' → ' + (k === 'owner_id' ? ownerLabel(p.fields[k]) : /inr/.test(k) ? inr(p.fields[k]) : p.fields[k])).join(', ');
     case 'campaign_add': return 'New campaign: ' + p.campaign_name;
     case 'spend_add': return 'Spend ' + inr(p.marketing_spend_inr) + ' on ' + cn(p.campaign_id) + ', ' + dshort(p.activity_date);
     case 'status_change': return 'Registration ' + p.registration_id + ' → ' + p.status;
@@ -384,18 +547,70 @@ function describeEdit(e) {
   }
 }
 
+/* ---------- "Understand this page": five questions per page, answered with live numbers ---------- */
+const EXPLAIN = {
+  overview: () => { const D = S.asOf, f = fcAt(D), k = E.kpis(S.ds, D, assump()), l = ly(), g = groupFlags(E.flags(S.ds, D, rules(), assump())).filter(x => x.level !== 'watch'); return [
+    ['Are we on track for the target?', f.mode === 'actual' ? `The fest is over: ${fmt(k.visitors)} outside attendees vs a ${fmt(f.target)} target (${f.verdict}).` : f.likely ? `${f.verdict}. Most likely ${fmt(f.likely)} outside attendees vs a ${fmt(f.target)} target; with bad luck ${fmt(f.bad)}, with good luck ${fmt(f.good)}. Safe means even bad luck beats the target.` : 'Too early: under 10% of registrations are in, so any forecast would be a guess.'],
+    ['Are we doing better than last year?', l ? `At the same point in 2025 (${dshort(l.D)}): ${fmt(l.k.registered)} registered and ${lakh(l.k.spend)} spent. Now: ${fmt(k.registered)} registered, ${lakh(k.spend)} spent. 2025 ended with ${fmt(E.kpis(l.ds, l.ds.event.end).visitors)} outside attendees.` : sim() ? 'Last year\'s data is still loading.' : 'This is the 2025 data itself; switch to the 2027 plan to compare against it.'],
+    ['What is going wrong right now?', g.length ? g.slice(0, 3).map(x => x.subj + ': ' + x.items[0].reason).join('. ') + '.' : 'Nothing at Warn or Act on this date.'],
+    ['What are we doing about it?', 'Each problem has an "Act on this" button that drafts the fix (a task, a budget change or a reserve release) for you to confirm. The right-hand card lists what has been decided and the open tasks. ' + (sim() ? 'The plan reviews the numbers at weeks 10, 12 and 14; money only moves there.' : '')],
+    ['How is the forecast worked out, and why trust it?', 'We play the fest 1,000 times. Each time, every uncertain input is drawn from its range: show-up by status (from 2025: 73–77% of confirmed people came), sign-ups still to come (from the plan curve), walk-ins (6% in 2025). We count how often we beat the target. It is a weather forecast, not a promise: the inputs are on the Data page, and the band narrows as real numbers replace guesses.']]; },
+  funnel: () => { const f = E.funnelView(S.ds, S.asOf, assump()), dr = f.steps.find(s => s.key === f.biggest_drop), at = f.steps[3]; return [
+    ['Where do we lose the most people?', dr ? `${dr.label}: only ${pct(dr.from_prev)} of the step before make it. ${dr.key === 'registered' ? 'Most people we reach never sign up; that is normal for a fest, so the work is on who we reach and how easy sign-up is.' : dr.key === 'confirmed' ? 'Sign-ups who have not confirmed come far less often, so confirm-your-spot reminders matter.' : 'Confirmed people still miss the fest; reminders, group passes and entry windows help.'}` : 'Not enough data yet.'],
+    ['Why count people, not clicks?', 'Clicks and views are events: one person can make many. Attendance is people, so every step counts each person once. Ad numbers are shown separately at the bottom.'],
+    ['What does one attendee cost?', at.n ? `${inr(at.cost_each)} so far (spend ÷ ${at.expected ? 'expected ' : ''}attendees). Our limit for an extra person is ₹250.` : 'Not known yet.'],
+    ['Can the gates handle the crowd?', `The gates safely take ${fmt(S.ds.event.gateCap || 500)} entries an hour. The bar on this page compares that with the busiest hour${started() ? ' so far' : ' we expect if people arrive like they did in 2025'}.`],
+    ['Is "Expected to come" a fact?', at.expected ? 'No, it is an estimate: each registration status times the chance it comes (from 2025). It turns into a fact on fest day, when people scan in.' : 'It is a fact now: people verified at the gate.']]; },
+  campaigns: () => [
+    ['Which channel brings the most attendees?', (() => { const r = E.campaignRows(S.ds, S.asOf, { assumptions: assump() }).filter(x => x.campaign_id).sort((a, b) => (ended() ? b.visitors - a.visitors : b.expected_visitors - a.expected_visitors))[0]; return r ? `${r.campaign}: ${fmt(ended() ? r.visitors : r.expected_visitors)} ${ended() ? 'attendees' : 'expected attendees'}.` : '–'; })()],
+    ['Which is cheapest per attendee?', (() => { const r = E.campaignRows(S.ds, S.asOf, { assumptions: assump() }).filter(x => x.campaign_id && (ended() ? x.visitors : x.expected_visitors) >= 30).sort((a, b) => (ended() ? a.cost_per_visitor - b.cost_per_visitor : a.cost_per_expected_visitor - b.cost_per_expected_visitor))[0]; return r ? `${r.campaign}: ${inr(ended() ? r.cost_per_visitor : r.cost_per_expected_visitor)} each.` : '–'; })()],
+    ['Which one is wasting money?', (() => { const g = groupFlags(E.flags(S.ds, S.asOf, rules(), assump())).filter(x => x.items.some(f => f.id.startsWith('cost-'))); return g.length ? g.map(x => x.subj + ': ' + x.items.find(f => f.id.startsWith('cost-')).reason).join('. ') + '.' : 'None is above its limit on this date.'; })()],
+    ['Why judge on attendees, not sign-ups?', 'Sign-ups that never come cost money and bring no one. Paid ads, for example, bring many sign-ups that do not confirm, so on cost per attendee they look much worse than on cost per sign-up.'],
+    ['Does a campaign\'s credit prove it caused the sign-up?', 'No. Credit only links a person to the last campaign they used. Some would have come anyway. Bets prove cause by comparing with similar colleges that did not get them.']],
+  bets: () => { const b = hasBets() ? E.betRows(S.ds, S.asOf, assump()) : []; return [
+    ['What is a bet?', 'A new idea we test before spending big: Campus Outreach (ambassadors with friend crews), Group Pass, Day Scholar transport, Volunteer Corps and Alumni Homecoming.'],
+    ['How do we know a bet caused the gain?', 'Each one runs in test colleges and is compared with similar colleges that don\'t get it. The comparison shows what would have happened anyway; the gap is the bet\'s effect.'],
+    ['When do we scale, fix or stop?', 'Too early until the test is fair (300+ per group, 2+ weeks). Stop if the gap is not clearly real. Change if an extra attendee costs more than the limit. Scale (reserve money) if even the next extra attendee is under the limit.'],
+    ['How sure are we?', b.length ? b.filter(x => x.gap_real).map(x => `${x.bet}: gap ${x.gap_real}`).join('; ') + '. High means 90%+ likely the gap is real, not luck. We show words, not exact percentages, because small changes in the data move them.' : '–'],
+    ['Why test small before spending big?', 'Most ideas don\'t work as well as hoped. A cheap test shows which ones do, so the ₹3.5L reserve only goes where an extra person is proven cheap. In the rehearsal one bet (Day Scholar Turnout) failed its test and was stopped at week 12.']]; },
+  insights: () => [
+    ['What is working?', 'Bets that passed their test and channels under the cost limit, each with the number that proves it.'],
+    ['What is not, and why?', 'Each item has a one-line reason with its number. Click "Why?" for what we saw, why it matters, what we suggest and what happens if we do nothing.'],
+    ['How serious is it?', 'Act = decide now. Warn = its owner fixes it this week. Watch = keep an eye on it. Fixed thresholds decide the level, so nothing is flagged on opinion.'],
+    ['What should we do?', 'Press "Act on this": it drafts the action (task, budget change or release) with an owner, a due date and the number to check later. Nothing changes until you confirm.'],
+    ['When do we check again?', 'Every action gets a review date, two weeks out by default. On that date the decision log compares the number then and now.']],
+  money: () => { const b = E.budget(S.ds, S.asOf); return [
+    ['Where is the money going?', `${lakh(b.spent)} of ${lakh(b.approved)} spent so far. The bar shows spent, still planned and reserve.`],
+    ['What does each rupee bring back?', 'The "Money in, people out" chart: spend on the left, attendees on the right, cost per attendee at the end in red if above its limit.'],
+    ['Why keep a reserve?', 'We don\'t know in advance which ideas will work. Holding ₹3.5L back lets money follow proof instead of hope.'],
+    ['When is reserve released?', 'Only at the reviews (weeks 10, 12, 14), only to a bet whose next extra attendee is under its limit, cheapest first. ₹1L needs a High gap; ₹50k a Medium one; one release per bet until its next review.'],
+    ['What if nothing qualifies?', 'Then the money stays put. In the rehearsal, no bet qualified at weeks 12 and 14, so ₹1.5L was never spent.']]; },
+  tasks: () => [
+    ['Who is doing what?', 'Each task has one owner and a due date. Edit any cell; it saves at once.'],
+    ['What is late?', (() => { const n = S.tasks.filter(t => (t.base || '25') === baseOf() && tStatus(t) !== 'done' && t.due && t.due < S.asOf).length; return n ? n + ' task' + (n > 1 ? 's are' : ' is') + ' past due on this date (marked late).' : 'Nothing is late on this date.'; })()],
+    ['Which problem did a task come from?', 'Tasks made with "Act on this" show where they came from (a signal, the Bets page or the analyst). Plan tasks come from the 2027 plan.'],
+    ['Did the action work?', 'The decision log compares the watched number on the decision day with today. It is a before/after reading, not proof.'],
+    ['What is the next review?', sim() ? 'Weeks 10, 12 and 14, then the fest eve check.' : 'Each decision\'s review date is in the log.']],
+  event: () => [['What does this show?', 'Verified gate entries per hour on the fest days.'], ['Why does the busiest hour matter?', 'Crowds at the gate are the main safety risk. The plan keeps the busiest hour under 80% of what the gates can take.'], ['Who acts on it?', 'Growth flags; security and operations decide on the day.'], ['Why count unique visitors separately?', 'One person can enter several times (1.59 entries each in 2025); the outcome is people.'], ['Where does capacity come from?', S.ds.event.gateCap ? '6 QR lanes at about 420 scans an hour each ≈ 2,500 an hour.' : 'The 2025 venue: about 500 an hour.']],
+  data: () => [['Is this data real?', '2025 is the provided dataset. 2027 is simulated from our plan to test the system; it is labelled everywhere.'], ['Why stop at week 10?', 'It is the first money review. Stopping there shows the decision with only what was known then. The rest is a rehearsal of one realistic run.'], ['Where do estimates come from?', 'The assumptions table: each value, its range and the 2025 evidence for it.'], ['How is the data cleaned?', 'Repeated IDs count once, each registration uses its latest status on the date, only verified gate entries count, and internal, staff and test people are excluded.'], ['How do I test with changed data?', 'Change a record below (a status, a check-in, a target) or edit a campaign. Every screen and the analyst update at once; undo is in the edit history.']]
+};
+function explainDrawer() {
+  const list = (EXPLAIN[S.page] || EXPLAIN.overview)();
+  return `<p class="note">Five questions people ask about this page, answered with the numbers for ${esc(dshort(S.asOf))}.</p><dl class="qa">${list.map(([q, a]) => `<dt>${esc(q)}</dt><dd>${esc(a)}</dd>`).join('')}</dl>`;
+}
+
 /* ---------- analyst tests: expected answers computed live ---------- */
 function tests() {
   const ds = S.ds, A = assump(), n = v => [String(Math.round(v)), Math.round(v).toLocaleString('en-IN'), Math.round(v).toLocaleString('en-US')];
   const refuse = ['not in the data', "doesn't include", 'does not include', 'not recorded', "don't have", 'do not have', 'not available', "isn't in", 'no data'];
   if (hasBets()) {
-    const D = ds.event.end, k = E.kpis(ds, D, A), pc = E.pace(ds, D)[0], rp = E.reservePlan(ds, D, A), bets = E.betRows(ds, D, A), b1 = bets.find(b => b.campaign_id === 'B1'), b5 = bets.find(b => b.campaign_id === 'B5'), r = E.campaignRows(ds, D, { assumptions: A }).find(x => x.campaign_id === 'C01');
+    const D = ds.event.today || ds.event.end, k = E.kpis(ds, D, A), f = E.forecast(ds, D, A), rp = E.reservePlan(ds, D, A), bets = E.betRows(ds, D, A), b1 = bets.find(b => b.campaign_id === 'B1'), b5 = bets.find(b => b.campaign_id === 'B5'), r = E.campaignRows(ds, D, { assumptions: A }).find(x => x.campaign_id === 'C01');
     return [
-      { id: 'a1', type: 'Data', q: 'How many outside registrations do we have, and are we on pace?', expect: fmt(k.registered) + ' vs base pace ' + fmt(pc.base_pace), any: n(k.registered) },
-      { id: 'a2', type: 'Decision', q: 'Which bet should get reserve money first, and why?', expect: rp.suggestions[0] ? rp.suggestions[0].bet + ' (lowest next-tranche cost ' + inr(rp.suggestions[0].next_tranche_cost) + ')' : 'none ready', any: rp.suggestions[0] ? [rp.suggestions[0].bet.split(' ')[0]] : ['none'] },
-      { id: 'a3', type: 'Calculation', q: 'How much cheaper is an extra attendee from Campus Outreach than from Alumni Homecoming?', expect: inr(b5.cost_per_extra - b1.cost_per_extra), any: n(b5.cost_per_extra - b1.cost_per_extra) },
-      { id: 'a4', type: 'Diagnosis', q: 'What is wrong with Paid Social?', expect: 'Cost ' + inr(r.cost_per_expected_visitor) + ' per expected visitor vs ₹250 cap; opt-outs ' + pct(r.opt_out_rate, 1), any: n(r.cost_per_expected_visitor).concat([String(r.cost_per_expected_visitor)]) },
-      { id: 'a5', type: 'Changed data', q: 'What is our total spend so far?', expect: inr(k.spend) + ' on "' + ds.label + '"', any: n(k.spend) },
+      { id: 'a1', type: 'Data', q: 'How many outside registrations do we have at week 10?', expect: fmt(k.registered), any: n(k.registered) },
+      { id: 'a2', type: 'Forecast', q: 'Are we on track for the attendee target at week 10?', expect: f.verdict + ': most likely ' + fmt(f.likely) + ' vs ' + fmt(f.target), any: n(f.likely).concat([f.verdict.toLowerCase()]) },
+      { id: 'a3', type: 'Decision', q: 'Which bet should get reserve money first at week 10, and why?', expect: rp.suggestions[0] ? rp.suggestions[0].bet + ' (next extra attendee ≈ ' + inr(rp.suggestions[0].next_tranche_cost) + ')' : 'none ready', any: rp.suggestions[0] ? [rp.suggestions[0].bet.split(' ')[0]] : ['none'] },
+      { id: 'a4', type: 'Calculation', q: 'At week 10, how much cheaper is an extra attendee from Campus Outreach than from Alumni Homecoming?', expect: inr(b5.cost_per_extra - b1.cost_per_extra), any: n(b5.cost_per_extra - b1.cost_per_extra) },
+      { id: 'a5', type: 'Diagnosis', q: 'What is wrong with Paid Social at week 10?', expect: 'Cost ' + inr(r.cost_per_expected_visitor) + ' per expected attendee vs ₹250 limit; few confirm', any: n(r.cost_per_expected_visitor) },
       { id: 'a6', type: 'Not in the data', q: 'Which colleges are our competitors running fests on the same weekend?', expect: 'Says it is not in the data', any: refuse }
     ];
   }
@@ -410,12 +625,13 @@ function tests() {
   ];
 }
 function testPanel() {
-  return `<details><summary>Test the analyst</summary><p class="note">Expected answers come from the same engine as the screens. "Run" asks the analyst and checks for the expected number or phrase. Make an edit, then rerun "Changed data".</p>
+  return `<details><summary>Test the analyst</summary><p class="note">Expected answers come from the same engine as the screens. "Run" asks the analyst and checks for the expected number or phrase. Make an edit on 2025, then rerun "Changed data".</p>
   <div class="scroll"><table><tr><th>Type</th><th>Question</th><th>Expected</th><th>Result</th><th></th></tr>${tests().map(t => { const r = S.tests[t.id]; return `<tr><td class="note">${esc(t.type)}</td><td>${esc(t.q)}</td><td>${esc(t.expect)}</td><td>${r ? (r.running ? 'Running…' : `<b style="color:${r.pass ? 'var(--good)' : 'var(--act)'}">${r.pass ? 'Pass' : 'Check'}</b><div class="note">${esc(r.text.slice(0, 200))}${r.text.length > 200 ? '…' : ''}</div>`) : '–'}</td><td><button class="btn ghost sm" type="button" data-act="test" data-id="${t.id}">Run</button></td></tr>`; }).join('')}</table></div></details>`;
 }
 
-/* ---------- drawers: campaign edit, new campaign, spend, bet detail, action confirm ---------- */
+/* ---------- drawers: page explainer, flag detail, campaign edit, new campaign, spend, bet detail, action confirm ---------- */
 const KINDS = { task: 'Create a task', release_reserve: 'Release reserve to a bet', pause_campaign: 'Pause campaign', resume_campaign: 'Resume campaign', set_planned_budget: 'Set planned budget', move_budget: 'Move planned budget', change_owner: 'Change owner', add_spend: 'Record spend' };
+const PAGE_NAMES = { overview: 'Overview', funnel: 'Funnel', campaigns: 'Campaigns', bets: 'Bets', insights: 'Insights', money: 'Money', tasks: 'Tasks', event: 'Fest days', data: 'Data' };
 function openDrawer(kind, data) { S.drawer = { kind, data: data || {} }; renderDrawer(); }
 function closeDrawer() { S.drawer = null; S.pending = null; renderDrawer(); }
 function renderDrawer() {
@@ -423,7 +639,9 @@ function renderDrawer() {
   if (!d) { if (w) w.remove(); return; }
   if (!w) { w = document.createElement('div'); w.id = 'side'; document.body.appendChild(w); }
   let title = '', body = '';
-  if (d.kind === 'camp') { const c = S.ds.camps.get(d.data.id); if (!c) return closeDrawer(); title = c.campaign_name; body = campDrawer(c); }
+  if (d.kind === 'explain') { title = 'Understand: ' + PAGE_NAMES[S.page]; body = explainDrawer(); }
+  else if (d.kind === 'flagd') { const f = E.flags(S.ds, S.asOf, rules(), assump()).find(x => x.id === d.data.id); if (!f) return closeDrawer(); title = 'Why this needs attention'; body = flagDetail(f); }
+  else if (d.kind === 'camp') { const c = S.ds.camps.get(d.data.id); if (!c) return closeDrawer(); title = c.campaign_name; body = campDrawer(c); }
   else if (d.kind === 'bet') { title = E.campName(S.ds, d.data.id); body = betDrawer(d.data.id); }
   else if (d.kind === 'newcamp') { title = 'Add campaign'; body = `<form class="f" data-form="newcamp"><label class="l">Name<input name="name" required maxlength="60"></label><div class="fr"><label class="l">Channel<input name="channel" required maxlength="40" placeholder="e.g. whatsapp"></label><label class="l">Owner<select name="owner">${ownerOptions('T03')}</select></label></div><label class="l">Planned budget (₹)<input type="number" name="budget" min="0" step="500"></label><button class="btn" type="submit">Add campaign</button></form>`; }
   else if (d.kind === 'spend') { title = 'Record spend'; body = `<form class="f" data-form="spend"><label class="l">Campaign<select name="campaign_id">${campOptions(d.data.id || '')}</select></label><div class="fr"><label class="l">Date<input type="date" name="activity_date" value="${esc(S.asOf)}" min="${esc(S.ds.event.start)}" max="${esc(S.ds.event.end)}" required></label><label class="l">Amount (₹, minus for a credit)<input type="number" name="amount" step="1" required></label></div><label class="l">Note<input name="note"></label><button class="btn" type="submit">Save spend</button></form>`; }
@@ -431,25 +649,26 @@ function renderDrawer() {
   w.innerHTML = `<div class="scrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="hd"><h2>${esc(title)}</h2><button class="btn ghost sm" data-act="close" type="button">Close</button></div><div class="bd">${body}</div></aside>`;
   if (d.kind === 'camp') { const c = S.ds.camps.get(d.data.id), t = E.trend(S.ds, 'registrations', 'week', S.ds.event.start, S.asOf < S.ds.event.eventStartDay ? S.asOf : E.addDays(S.ds.event.eventStartDay, -1), c.campaign_id); mount('campChart', s => colChart(s, { labels: t.rows.map(x => x.period.replace('week of ', '')), values: t.rows.map(x => x.value), short: dshort })); }
   if (d.kind === 'confirm') { const f = w.querySelector('form'); f.addEventListener('change', () => { readDraft(f); renderDrawer(); }); }
-  const first = w.querySelector('input,select,button'); if (first) first.focus({ preventScroll: true });
+  const first = w.querySelector('.hd button'); if (first) first.focus({ preventScroll: true });
 }
 function campDrawer(c) {
   const A = assump(), r = E.campaignRows(S.ds, S.asOf, { assumptions: A }).find(x => x.campaign_id === c.campaign_id) || {};
   return `<p class="note">${esc(c.objective || c.target_audience || '')}</p><h3>Registrations per week</h3><div class="fig" style="min-height:170px"><svg id="campChart" role="img" aria-label="Weekly registrations"></svg></div>
-  <p class="note">${fmt(r.registered)} registered · ${fmt(r.confirmed)} confirmed · ${fmt(r.cancelled)} cancelled · opt-outs ${pct(r.opt_out_rate, 1)} · CTR ${pct(r.ctr, 1)}</p>
+  <p class="note">${fmt(r.registered)} registered · ${fmt(r.confirmed)} confirmed · ${fmt(r.cancelled)} cancelled · opt-outs ${pct(r.opt_out_rate, 1)}</p>
   <form class="f" data-form="campedit" data-id="${esc(c.campaign_id)}" style="margin-top:14px"><h3>Edit</h3><div class="fr"><label class="l">Status<select name="status">${['active', 'paused', 'ended'].map(s => `<option ${((c.status || 'active') === s) ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="l">Owner<select name="owner">${ownerOptions(c.owner_id)}</select></label><label class="l">Planned budget (₹)<input type="number" name="budget" min="0" step="500" value="${esc(c.planned_budget_inr || '')}"></label></div><label class="l">Why<input name="note" placeholder="Kept in the edit history"></label><button class="btn" type="submit">Save</button></form>
   <div class="row" style="margin-top:14px"><button class="btn ghost" data-act="spend" data-id="${esc(c.campaign_id)}" type="button">Record spend</button><button class="btn ghost" data-act="draft" data-kind="task" data-camp="${esc(c.campaign_id)}" type="button">Create a task</button><button class="btn ghost" data-act="ask" data-q="${esc('How is ' + c.campaign_name + ' doing and what should we change?')}" type="button">Ask the analyst</button></div>`;
 }
 function draftFromFlag(f) {
-  const [kind, cid] = f.id.split('-'), c = S.ds.camps.get(cid), name = c ? c.campaign_name : '', owner = c ? c.owner_id : (/Security/.test(f.owner) ? 'SEC' : 'GL');
-  const d = { kind: 'task', campaign_id: c ? cid : '', owner, title: f.action.split('.')[0], reason: f.title + '. ' + f.evidence, flag_id: f.id, source: 'signal', metric: null, expected: '' };
-  if (kind === 'bet' && c) { const b = E.betRows(S.ds, S.asOf, assump()).find(x => x.campaign_id === cid) || {}; Object.assign(d, { title: b.decision === 'Too early' ? `${name}: keep the test running until both groups pass 300 people` : b.decision === 'Stop' ? `Stop ${name} and move its budget to the best bet` : `${name}: bring cost per extra person under ${inr(b.cost_cap_inr)} or stop it`, metric: { key: 'cost_per_extra', campaign_id: cid }, expected: b.decision === 'Change' ? 'Cost per extra person falls under the cap' : '' }); }
-  else if (kind === 'cost' && c) Object.assign(d, { title: `Cut ${name} to reveals and reminders only`, metric: { key: ended() ? 'cost_per_visitor' : 'cost_per_expected_visitor', campaign_id: cid }, expected: 'Cost per attendee falls under the cap' });
+  const i = f.id.indexOf('-'), kind = f.id.slice(0, i), cid = f.id.slice(i + 1), c = S.ds.camps.get(cid), name = c ? c.campaign_name : '', owner = c ? c.owner_id : (/Security/.test(f.owner) ? 'SEC' : 'GL');
+  const d = { kind: 'task', campaign_id: c ? cid : '', owner, title: f.action.split('.')[0].split(';')[0], reason: f.title + ': ' + f.reason + '. ' + f.evidence, flag_id: f.id, source: 'signal', metric: null, expected: '' };
+  if (kind === 'bet' && c) { const b = E.betRows(S.ds, S.asOf, assump()).find(x => x.campaign_id === cid) || {}; Object.assign(d, { title: b.decision === 'Too early' ? `${name}: keep the test running until both groups pass 300 people` : b.decision === 'Stop' ? `Stop ${name} and move its budget to the best bet` : `${name}: bring cost per extra person under ${inr(b.cost_cap_inr)}`, metric: { key: 'cost_per_extra', campaign_id: cid }, expected: b.decision === 'Change' ? 'Cost per extra person falls under the limit' : '' }); }
+  else if (kind === 'cost' && c) Object.assign(d, { title: `Cut ${name} to reveals and reminders only`, metric: { key: ended() ? 'cost_per_visitor' : 'cost_per_expected_visitor', campaign_id: cid }, expected: 'Cost per attendee falls under the limit' });
   else if ((kind === 'showup' || kind === 'confirm') && c) Object.assign(d, { title: `Send confirm-your-spot reminders to unconfirmed ${name} registrants`, metric: { key: 'confirmed', campaign_id: cid }, expected: 'More registrants confirm within a week' });
-  else if (kind === 'optout' && c) Object.assign(d, { title: `${name}: at most one email a week; stop emailing people who opted out`, metric: { key: 'opt_out_rate', campaign_id: cid }, expected: 'Opt-outs stop rising' });
+  else if (kind === 'optout' && c) Object.assign(d, { title: `${name}: at most one email a week; never email people who opted out`, metric: { key: 'opt_out_rate', campaign_id: cid }, expected: 'Opt-outs stop rising' });
   else if (kind === 'cancel' && c) Object.assign(d, { title: `Ask ${name} cancellers why (one-question survey)`, metric: { key: 'cancel_rate', campaign_id: cid } });
+  else if (kind === 'forecast' && hasBets()) { const rp = E.reservePlan(S.ds, S.asOf, assump()).suggestions[0]; if (rp) { const cc = S.ds.camps.get(rp.campaign_id); Object.assign(d, { kind: 'release_reserve', campaign_id: rp.campaign_id, amount: rp.amount, owner: cc.owner_id, title: `Release ${inr(rp.amount)} of reserve to ${rp.bet}`, metric: { key: 'expected_extra_attendees', campaign_id: rp.campaign_id }, expected: 'More extra attendees under the limit', source: 'signal' }); } else Object.assign(d, { title: 'Push confirm-your-spot reminders to all unconfirmed registrants', metric: { key: 'confirmed', campaign_id: null } }); }
   else if (kind === 'pace' || kind === 'forecast' || kind === 'goal') Object.assign(d, { title: hasBets() ? 'Find the lagging bet and have its owner fix it this week' : 'Push registrations through the cheapest proven campaign', metric: { key: 'registered', campaign_id: null } });
-  else if (kind === 'gate') Object.assign(d, { owner: 'SEC', title: 'Give pass holders entry time windows to spread the peak hour' });
+  else if (kind === 'gate') Object.assign(d, { owner: 'SEC', title: 'Give pass holders entry time windows to spread the busiest hour' });
   return d;
 }
 function openDraft(d) {
@@ -457,10 +676,20 @@ function openDraft(d) {
   S.pending = Object.assign({ due: E.addDays(S.asOf, 3), review_date: E.addDays(S.asOf, 14), amount: 0, to: '', expected: '', reason: '' }, d);
   openDrawer('confirm');
 }
+function forecastEffect(p) {
+  if (!before() || !['release_reserve', 'move_budget'].includes(p.kind) || !(p.amount > 0)) return null;
+  const A = assump(), bets = E.betRows(S.ds, S.asOf, A), rows = E.campaignRows(S.ds, S.asOf, { assumptions: A });
+  const next = id => { const b = bets.find(x => x.campaign_id === id); if (b) return b.next_tranche_cost; const r = rows.find(x => x.campaign_id === id); return r && r.cost_per_expected_visitor ? r.cost_per_expected_visitor / A.scale_factor.value : null; };
+  const extra = []; if (p.kind === 'release_reserve') { const c = next(p.campaign_id); if (c) extra.push({ amount: p.amount, cost: c }); }
+  else { const a = next(p.campaign_id), b = next(p.to); if (a) extra.push({ amount: -p.amount, cost: a }); if (b) extra.push({ amount: p.amount, cost: b }); }
+  if (!extra.length) return null;
+  const was = fcAt(S.asOf), now = fcAt(S.asOf, extra);
+  return `Forecast: most likely ${fmt(was.likely)} → <b>${fmt(now.likely)}</b>, bad luck ${fmt(was.bad)} → ${fmt(now.bad)} · ${pill(was.verdict)} → ${pill(now.verdict)}`;
+}
 function effects(p) {
   const out = [], cn = id => E.campName(S.ds, id), row = id => E.campaignRows(S.ds, S.asOf).find(r => r.campaign_id === id) || {};
   const planned = id => { const r = row(id); return Number(r.planned_budget_inr || r.spend || 0); };
-  if (p.kind === 'release_reserve') { const left = E.reserveLeft(S.ds); out.push(`${cn(p.campaign_id)} planned budget ${inr(planned(p.campaign_id))} → ${inr(planned(p.campaign_id) + Number(p.amount))}`); out.push(`Reserve left ${inr(left)} → ${inr(left - Number(p.amount))}`); const b = E.betRows(S.ds, S.asOf, assump()).find(x => x.campaign_id === p.campaign_id); if (!b) out.unshift('⚠ Not a bet: reserve only goes to bets'); else if (b.decision !== 'Scale') out.unshift('⚠ ' + b.bet + ' is not cleared for tranche money: ' + b.why); if (Number(p.amount) > left) out.unshift('⚠ More than the reserve left'); }
+  if (p.kind === 'release_reserve') { const left = E.reserveLeft(S.ds, S.asOf); out.push(`${cn(p.campaign_id)} planned budget ${inr(planned(p.campaign_id))} → ${inr(planned(p.campaign_id) + Number(p.amount))}`); out.push(`Reserve left ${inr(left)} → ${inr(left - Number(p.amount))}`); const b = E.betRows(S.ds, S.asOf, assump()).find(x => x.campaign_id === p.campaign_id); if (!b) out.unshift('⚠ Not a bet: reserve only goes to bets'); else if (b.decision !== 'Scale') out.unshift('⚠ ' + b.bet + ' is not cleared for reserve money: ' + b.why); if (Number(p.amount) > left) out.unshift('⚠ More than the reserve left'); }
   if (p.kind === 'pause_campaign') out.push(`Set ${cn(p.campaign_id)} to paused`);
   if (p.kind === 'resume_campaign') out.push(`Set ${cn(p.campaign_id)} to active`);
   if (p.kind === 'set_planned_budget') out.push(`${cn(p.campaign_id)} planned budget → ${inr(p.amount)}`);
@@ -473,7 +702,7 @@ function effects(p) {
   return out;
 }
 function confirmBody() {
-  const p = S.pending, amt = ['release_reserve', 'set_planned_budget', 'move_budget', 'add_spend'].includes(p.kind);
+  const p = S.pending, amt = ['release_reserve', 'set_planned_budget', 'move_budget', 'add_spend'].includes(p.kind), fx = forecastEffect(p);
   return `<form class="f" id="draftForm" data-form="confirm"><p class="note">Nothing changes until you confirm.${p.source === 'analyst' ? ' Proposed by the analyst.' : ''}</p>
   <label class="l">Action<select name="kind">${Object.keys(KINDS).map(k => `<option value="${k}" ${k === p.kind ? 'selected' : ''}>${KINDS[k]}</option>`).join('')}</select></label>
   <div class="fr"><label class="l">Campaign<select name="campaign_id"><option value="">None</option>${campOptions(p.campaign_id, false, p.kind === 'release_reserve' ? c => c.kind === 'bet' : null)}</select></label>${p.kind === 'move_budget' ? `<label class="l">Move to<select name="to">${campOptions(p.to)}</select></label>` : ''}${amt ? `<label class="l">Amount (₹)<input type="number" name="amount" step="500" value="${esc(p.amount)}"></label>` : ''}</div>
@@ -481,6 +710,7 @@ function confirmBody() {
   <div class="fr"><label class="l">Owner<select name="owner">${ownerOptions(p.owner)}</select></label><label class="l">Due<input type="date" name="due" value="${esc(p.due)}"></label><label class="l">Review on<input type="date" name="review_date" value="${esc(p.review_date)}"></label></div>
   <label class="l">Number to check on review<select name="metric"><option value="">None</option>${Object.keys(METRICS).map(k => `<option value="${k}" ${p.metric && p.metric.key === k ? 'selected' : ''}>${METRICS[k]}</option>`).join('')}</select></label>
   <label class="l">Why<textarea name="reason" rows="3">${esc(p.reason)}</textarea></label><label class="l">Expected result<input name="expected" value="${esc(p.expected)}"></label>
+  ${fx ? `<p class="impact">${fx} ${info('Each rupee moved buys extra attendees at that bet\'s next-attendee cost, delivering 50–100% of it (most likely 80%). Money taken from a channel loses attendees at its own next-attendee cost.')}</p>` : ''}
   <div class="card" style="background:var(--soft);border:0"><b>This will:</b><ul style="margin:6px 0 0;padding-left:18px">${effects(p).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
   <div class="row"><button class="btn" type="submit" ${S.readOnly ? 'disabled' : ''}>Confirm</button><button class="btn ghost" type="button" data-act="close">Cancel</button></div></form>`;
 }
@@ -494,17 +724,22 @@ async function confirmDraft() {
   const p = S.pending; if (!p) return; const c = S.ds.camps.get(p.campaign_id);
   if (p.kind !== 'task' && !c) return toast('Pick a campaign for this action.');
   if (p.kind === 'move_budget' && (!p.to || p.to === p.campaign_id || !(p.amount > 0))) return toast('Pick a different campaign to move to and an amount above zero.');
-  if (p.kind === 'release_reserve' && (!(p.amount > 0) || p.amount > E.reserveLeft(S.ds) || c.kind !== 'bet')) return toast('Reserve goes to a bet, above zero and within the reserve left.');
+  if (p.kind === 'release_reserve' && (!(p.amount > 0) || p.amount > E.reserveLeft(S.ds, S.asOf) || c.kind !== 'bet')) return toast('Reserve goes to a bet, above zero and within the reserve left.');
   const edits = [], row = id => E.campaignRows(S.ds, S.asOf).find(r => r.campaign_id === id) || {}, planned = id => Number(row(id).planned_budget_inr || row(id).spend || 0);
-  const upd = async (id, fields) => { const e = await commitEdit('campaign_update', { campaign_id: id, fields }, p.reason); if (e) edits.push(e.id); };
-  if (p.kind === 'release_reserve') await upd(p.campaign_id, { planned_budget_inr: planned(p.campaign_id) + p.amount, reserve_released_inr: (Number(c.reserve_released_inr) || 0) + p.amount });
+  const upd = async (id, fields, extra) => { const e = await commitEdit('campaign_update', Object.assign({ campaign_id: id, fields }, extra || {}), p.reason); if (e) edits.push(e.id); };
+  if (p.kind === 'release_reserve') {
+    // In the 2027 rehearsal, a release you make replaces the plan's matching release in the next 10 days, so money is never counted twice.
+    const twin = S.ds.plan.find(x => x.kind === 'release_reserve' && x.campaign_id === p.campaign_id && x.decided_at.slice(0, 10) > S.asOf && x.decided_at.slice(0, 10) <= E.addDays(S.asOf, 10));
+    const base = (Number(c.reserve_released_inr) || 0);
+    await upd(p.campaign_id, { planned_budget_inr: (Number(c.planned_budget_inr) || 0) + p.amount, reserve_released_inr: base + p.amount, reserve_released_at: S.asOf }, twin ? { replaces_plan: twin.decision_id } : null);
+  }
   if (p.kind === 'pause_campaign') await upd(p.campaign_id, { status: 'paused' });
   if (p.kind === 'resume_campaign') await upd(p.campaign_id, { status: 'active' });
   if (p.kind === 'set_planned_budget') await upd(p.campaign_id, { planned_budget_inr: Number(p.amount) });
   if (p.kind === 'change_owner') await upd(p.campaign_id, { owner_id: p.owner, owner_name: ownerLabel(p.owner) });
   if (p.kind === 'move_budget') { const a = planned(p.campaign_id), b = planned(p.to); await upd(p.campaign_id, { planned_budget_inr: a - p.amount }); await upd(p.to, { planned_budget_inr: b + p.amount }); }
   if (p.kind === 'add_spend') { const e = await commitEdit('spend_add', { campaign_id: p.campaign_id, activity_date: S.asOf + 'T00:00:00', marketing_spend_inr: Number(p.amount), owner_id: c.owner_id }, p.reason); if (e) edits.push(e.id); }
-  const base = baseOf(), dec = { id: newId('DC'), base, title: p.title, kind: p.kind, reason: p.reason, expected: p.expected, as_of: S.asOf, review_date: p.review_date, created_at: new Date().toISOString(), by: S.uid || 'this browser', edit_ids: edits, metric: p.metric ? Object.assign({}, p.metric, { before: metricNow(p.metric) }) : null, status: 'open', source: p.source || 'manual' };
+  const base = baseOf(), dec = { id: newId('DC'), base, title: p.title, kind: p.kind, amount: Number(p.amount) || 0, campaign_id: p.campaign_id || null, reason: p.reason, expected: p.expected, as_of: S.asOf, review_date: p.review_date, created_at: new Date().toISOString(), by: S.uid || 'this browser', edit_ids: edits, metric: p.metric ? Object.assign({}, p.metric, { before: metricNow(p.metric) }) : null, status: 'open', source: p.source || 'manual' };
   let task = null;
   if (p.kind !== 'add_spend' && p.kind !== 'change_owner') { task = { id: newId('TK'), base, title: p.title, owner: p.owner, due: p.due, status: 'todo', campaign_id: p.campaign_id || null, flag_id: p.flag_id || null, source: p.source || 'manual', decision_id: dec.id, created_at: new Date().toISOString() }; dec.task_id = task.id; await Store.put('tasks', task); }
   await Store.put('decisions', dec);
@@ -513,60 +748,63 @@ async function confirmDraft() {
 }
 
 /* ---------- render & events ---------- */
-function setPage() { const h = (location.hash || '#overview').slice(1); S.page = PAGES[h] ? h : 'overview'; document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.getAttribute('href') === '#' + S.page ? 'page' : 'false')); render(); }
+function setPage() { const h = (location.hash || '#overview').slice(1); S.page = PAGES[h] ? h : 'overview'; document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.getAttribute('href') === '#' + S.page ? 'page' : 'false')); if (S.drawer && S.drawer.kind === 'explain') closeDrawer(); render(); }
 let raf = 0;
 function render() { cancelAnimationFrame(raf); raf = requestAnimationFrame(renderNow); }
 function renderNow() {
   if (!S.ds) return; observers.forEach(o => o.disconnect()); observers = []; syncBar();
   try { $('#main').innerHTML = PAGES[S.page](); } catch (e) { console.error(e); $('#main').innerHTML = `<div class="loading">This view hit an error: ${esc(e.message)}</div>`; }
   if (S.page === 'overview') drawOverview();
+  if (S.page === 'funnel' && S.funnelCamp === 'all') drawPath();
+  if (S.drawer && (S.drawer.kind === 'explain' || S.drawer.kind === 'flagd')) renderDrawer();
 }
 async function switchView(v, keepDate) {
   S.view = v; $('#main').innerHTML = '<div class="loading">Loading…</div>';
-  try { if (v !== 'imported') await loadBase(VIEWS[v].base); } catch (e) { $('#main').innerHTML = `<div class="loading">Could not load data (${esc(e.message)}).</div>`; return; }
+  try { await loadBase(VIEWS[v].base); } catch (e) { $('#main').innerHTML = `<div class="loading">Could not load data (${esc(e.message)}).</div>`; return; }
   S.review = null; S.tests = {}; rebuild(keepDate); render();
   if (chat.sample && !chat.turns.length) emptyState();
 }
+function goDate(d) { if (!isDate(d)) return; const ev = S.ds.event; S.asOf = d < ev.start ? ev.start : d > ev.end ? ev.end : d; S.review = null; syncBar(); render(); }
 function bind() {
   window.addEventListener('hashchange', setPage);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (S.drawer) closeDrawer(); else $('#chat').classList.remove('open'); } });
-  $('#asOf').addEventListener('change', e => { if (isDate(e.target.value)) { S.asOf = e.target.value; rebuild(true); render(); } });
-  const step = dir => { const opts = dateOptions().map(o => o[0]).reverse(), i = opts.indexOf(S.asOf), j = Math.min(opts.length - 1, Math.max(0, i + dir)); if (j !== i) { S.asOf = opts[j]; rebuild(true); render(); } };
+  $('#asOf').addEventListener('change', e => goDate(e.target.value));
+  const step = dir => { const opts = dateOptions().map(o => o[0]), i = opts.indexOf(S.asOf), j = Math.min(opts.length - 1, Math.max(0, i + dir)); if (j !== i) goDate(opts[j]); };
   $('#prevWk').addEventListener('click', () => step(-1)); $('#nextWk').addEventListener('click', () => step(1));
   $('#dsSel').addEventListener('change', e => { const v = e.target.value; switchView(v === '25' ? (editsFor('25').length ? 'edit25' : 'orig25') : v); });
   $('#origToggle').addEventListener('click', () => switchView(S.view === 'edit25' ? 'orig25' : 'edit25', true));
   const onClick = async e => {
     const b = e.target.closest('[data-act]'); if (!b) return; const a = b.dataset.act, id = b.dataset.id;
     if (a === 'flag') { const f = E.flags(S.ds, S.asOf, rules(), assump()).find(x => x.id === id); if (f) openDraft(draftFromFlag(f)); }
+    else if (a === 'flagd') openDrawer('flagd', { id });
+    else if (a === 'explain') openDrawer('explain');
+    else if (a === 'go') goDate(b.dataset.d);
     else if (a === 'ask') { closeDrawer(); askAnalyst(b.dataset.q); }
     else if (a === 'camp') openDrawer('camp', { id });
     else if (a === 'bet') openDrawer('bet', { id });
     else if (a === 'newcamp') openDrawer('newcamp');
     else if (a === 'spend') openDrawer('spend', { id });
     else if (a === 'close') closeDrawer();
-    else if (a === 'release') { const c = S.ds.camps.get(id), amt = Number(b.dataset.amt); openDraft({ kind: 'release_reserve', campaign_id: id, amount: amt, owner: c.owner_id, title: `Release ${inr(amt)} of reserve to ${c.campaign_name}`, reason: 'Lowest next-tranche cost under its cap (Bets page, ' + dshort(S.asOf) + ')', expected: 'More extra attendees at under the cap', metric: { key: 'expected_extra_attendees', campaign_id: id }, source: 'bets' }); }
+    else if (a === 'release') { const c = S.ds.camps.get(id), amt = Number(b.dataset.amt); openDraft({ kind: 'release_reserve', campaign_id: id, amount: amt, owner: c.owner_id, title: `Release ${inr(amt)} of reserve to ${c.campaign_name}`, reason: 'Cheapest next extra attendee under its limit (Bets page, ' + dshort(S.asOf) + ')', expected: 'More extra attendees under the limit', metric: { key: 'expected_extra_attendees', campaign_id: id }, source: 'bets' }); }
     else if (a === 'draft') { const cid = b.dataset.camp || ''; openDraft({ kind: 'task', campaign_id: cid, owner: (S.ds.camps.get(cid) || {}).owner_id || 'GL', title: '', source: 'manual' }); }
-    else if (a === 'tmove') { const t = S.tasks.find(x => x.id === id); if (t) { const o = ['todo', 'doing', 'done'], i = Math.min(2, Math.max(0, o.indexOf(t.status) + Number(b.dataset.d))); await Store.put('tasks', Object.assign(clone(t), { status: o[i] })); render(); } }
     else if (a === 'tdel') { const t = S.tasks.find(x => x.id === id); if (t) { await Store.remove('tasks', id); render(); toast('Task deleted', async () => { await Store.put('tasks', t); render(); }); } }
     else if (a === 'review') { S.review = id || null; render(); }
     else if (a === 'undo') { const x = S.edits.find(y => y.id === id); if (x) { await Store.put('edits', Object.assign(clone(x), { undone: !x.undone })); rebuild(true); render(); } }
-    else if (a === 'reset') { S.settings = { assump: {}, rules: {} }; await Store.putSettings(); rebuild(true); render(); }
     else if (a === 'test') runTest(id);
   };
   document.addEventListener('click', onClick);
   document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('tr[data-act]')) e.target.click(); });
   document.addEventListener('change', async e => {
-    const t = e.target, ch = t.dataset.ch, set = t.dataset.set;
+    const t = e.target, ch = t.dataset.ch;
     if (ch === 'funnelCamp') { S.funnelCamp = t.value; render(); }
-    else if (set === 'assump') { S.settings.assump = Object.assign({}, S.settings.assump, { [t.dataset.k]: Number(t.value) }); await Store.putSettings(); render(); }
-    else if (set === 'rule') { const r = Object.assign({}, (S.settings.rules || {})[t.dataset.k] || {}); r[t.dataset.l] = Number(t.value); S.settings.rules = Object.assign({}, S.settings.rules, { [t.dataset.k]: r }); await Store.putSettings(); render(); }
-    else if (t.id === 'importFile' && t.files && t.files[0]) importFile(t.files[0]);
+    else if (t.dataset.t) { const tk = S.tasks.find(x => x.id === t.dataset.t); if (!tk) return; const v = t.value.trim(); if (t.dataset.f === 'title' && !v) { t.value = tk.title; return; } await Store.put('tasks', Object.assign(clone(tk), { [t.dataset.f]: v })); if (t.dataset.f !== 'title') render(); toast('Saved'); }
   });
   document.addEventListener('submit', async e => {
     const f = e.target; if (!f.dataset || !f.dataset.form) return; e.preventDefault();
     const v = Object.fromEntries(new FormData(f).entries()), kind = f.dataset.form;
     if (kind === 'confirm') { readDraft(f); return confirmDraft(); }
-    if (kind === 'spend') { const c = S.ds.camps.get(v.campaign_id), amt = Number(v.amount); if (!amt) return toast('Enter an amount.'); await commitEdit('spend_add', { campaign_id: v.campaign_id, activity_date: v.activity_date + 'T00:00:00', marketing_spend_inr: amt, owner_id: c ? c.owner_id : null }, v.note); closeDrawer(); toast('Spend saved: ' + inr(amt) + ' on ' + E.campName(S.ds, v.campaign_id)); }
+    if (kind === 'addtask') { await Store.put('tasks', { id: newId('TK'), base: baseOf(), title: v.title.trim(), owner: v.owner, due: v.due, status: 'todo', campaign_id: null, source: 'manual', created_at: new Date().toISOString() }); render(); toast('Task added'); }
+    else if (kind === 'spend') { const c = S.ds.camps.get(v.campaign_id), amt = Number(v.amount); if (!amt) return toast('Enter an amount.'); await commitEdit('spend_add', { campaign_id: v.campaign_id, activity_date: v.activity_date + 'T00:00:00', marketing_spend_inr: amt, owner_id: c ? c.owner_id : null }, v.note); closeDrawer(); toast('Spend saved: ' + inr(amt) + ' on ' + E.campName(S.ds, v.campaign_id)); }
     else if (kind === 'newcamp') { const ids = Array.from(S.ds.camps.keys()).filter(x => /^C\d+$/.test(x)).map(x => Number(x.slice(1))); const id = 'C' + String(Math.max(0, ...ids) + 1).padStart(2, '0'); await commitEdit('campaign_add', { campaign_id: id, campaign_name: v.name.trim(), channel: v.channel.trim(), owner_id: v.owner, owner_name: ownerLabel(v.owner), status: 'active', kind: 'channel', planned_budget_inr: Number(v.budget) || null, created_at: S.asOf + 'T09:00:00', planned_start_at: S.asOf + 'T09:00:00' }, 'New campaign'); closeDrawer(); toast('Campaign added: ' + v.name); }
     else if (kind === 'campedit') { const c = S.ds.camps.get(f.dataset.id), fields = {}; if ((c.status || 'active') !== v.status) fields.status = v.status; if (c.owner_id !== v.owner) { fields.owner_id = v.owner; fields.owner_name = ownerLabel(v.owner); } const bud = v.budget === '' ? null : Number(v.budget); if ((c.planned_budget_inr || null) !== bud) fields.planned_budget_inr = bud; if (!Object.keys(fields).length) return toast('Nothing changed.'); await commitEdit('campaign_update', { campaign_id: f.dataset.id, fields }, v.note); renderDrawer(); toast('Saved: ' + c.campaign_name); }
     else if (kind === 'target') { const t = E.targetAt(S.ds, S.asOf) || {}; await commitEdit('target_add', Object.assign({}, t, { effective_at: v.date + 'T00:00:00', target_version: v.name, registration_goal: Number(v.r), unique_external_visitors_goal: Number(v.v), marketing_budget_inr: Number(v.b) }), 'New target version'); toast('Target version saved'); }
@@ -574,17 +812,6 @@ function bind() {
     else if (kind === 'status') { const rid = v.rid.trim(); if (!S.ds.regs.find(r => r.registration_id === rid)) return toast('No registration ' + rid + ' in this data.'); await commitEdit('status_change', { registration_id: rid, status: v.status, effective_at: v.t.length === 16 ? v.t + ':00' : v.t }, 'Status change'); toast(rid + ' → ' + v.status); }
     else if (kind === 'review') { const d = S.decisions.find(x => x.id === f.dataset.id); if (d) { await Store.put('decisions', Object.assign(clone(d), { status: 'reviewed', outcome: v.outcome + (v.next ? ' · next: ' + v.next : ''), after: metricNow(d.metric), reviewed_as_of: S.asOf })); const t = S.tasks.find(x => x.id === d.task_id); if (t && t.status !== 'done') await Store.put('tasks', Object.assign(clone(t), { status: 'done' })); S.review = null; render(); toast('Review saved'); } }
   });
-}
-function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('could not load the spreadsheet reader')); document.head.appendChild(s); }); }
-async function importFile(file) {
-  const msg = $('#importMsg'); msg.textContent = 'Reading ' + file.name + '…';
-  try {
-    if (!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
-    const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' }), raw = {};
-    for (const t of E.TABLES) { const name = wb.SheetNames.find(n => n.trim().toLowerCase() === E.SHEETS[t].toLowerCase()); raw[t] = name ? window.XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null, raw: true }) : []; }
-    const v = E.validate(raw); if (!v.ok) { msg.textContent = 'Not loaded: ' + v.errors.join('; '); return; }
-    S.importRaw = raw; S.importName = file.name; S.view = 'imported'; S.tests = {}; rebuild(); render(); toast('Loaded ' + file.name);
-  } catch (e) { msg.textContent = 'Could not read the file: ' + e.message; }
 }
 
 /* ---------- AI growth analyst ---------- */
@@ -595,31 +822,32 @@ function richText(el, t) { el.innerHTML = esc(String(t).replace(/^#{1,6}\s*/gm, 
 function openChat() { $('#chat').classList.add('open'); }
 function emptyState() {
   if (!S.ds) return;
-  const sug = hasBets() ? ['Are we on pace this week?', 'Which bet should get reserve money first?', 'What is wrong with Paid Social?', 'Is Day Scholar Turnout working yet?'] : ['Why did we miss the registration goal?', 'Which campaign should get more budget?', 'How many visitors came on both days?', 'What was the weather on day 1?'];
+  const sug = hasBets() ? ['Are we on track for the attendee target?', 'Which bet should get reserve money first?', 'What happens if we release ₹1L to Group Pass?', 'What is wrong with Paid Social?'] : ['Why did we miss the attendee goal?', 'Which campaign should get more budget?', 'How many visitors came on both days?', 'What was the weather on day 1?'];
   $('#msgs').innerHTML = `<div class="empty">I read the same numbers as the dashboard, for the dataset and date you picked. I can set up actions for you to confirm.<div class="sugg">${sug.map(s => `<button type="button" data-q="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`;
 }
 function dateArg(v) { if (!isDate(v)) return S.asOf; const ev = S.ds.event; return v < ev.start ? ev.start : v > ev.end ? ev.end : v; }
 function campArg(v) { if (!v || v === 'all') return undefined; const s = String(v).trim(); if (S.ds.camps.has(s.toUpperCase())) return s.toUpperCase(); const m = Array.from(S.ds.camps.values()).find(c => c.campaign_name.toLowerCase() === s.toLowerCase()); if (m) return m.campaign_id; throw new Error('Unknown campaign "' + s + '". Use an ID like C01 or B1.'); }
 function pick(o, keys) { const r = {}; keys.forEach(k => { if (o[k] !== undefined) r[k] = o[k]; }); return r; }
 function contextBlock() {
-  const ds = S.ds, A = assump(), k = E.kpis(ds, S.asOf, A), fl = E.flags(ds, S.asOf, rules(), A).slice(0, 8), ev = ds.event;
+  const ds = S.ds, A = assump(), k = E.kpis(ds, S.asOf, A), fl = E.flags(ds, S.asOf, rules(), A).slice(0, 8), ev = ds.event, fc = fcAt(S.asOf);
   const camps = Array.from(ds.camps.values()).map(c => `${c.campaign_id} ${c.campaign_name} (${c.kind === 'bet' ? 'bet #' + c.bet_rank + ', ' + c.bet_type : c.channel}; owner ${ownerLabel(c.owner_id)} ${c.owner_id}${c.status && c.status !== 'active' ? '; ' + c.status : ''})`).join('\n');
   const open = S.tasks.filter(t => t.status !== 'done' && (t.base || '25') === baseOf()).slice(0, 8).map(t => `${t.title} (${ownerLabel(t.owner)}, due ${t.due})`).join('; ');
-  return `DATA IN VIEW: ${ds.label}.${ev.simulated ? ' SIMULATED: our 2027 plan running in New Delhi, generated to test the plan; not real records. Say "simulated" when it matters.' : ''} Event ${ev.name}, ${ev.eventStartDay} to ${ev.eventEndDay}; records cover ${ev.start} to ${ev.end}; INR; IST.
-SELECTED DATE: ${S.asOf}${k.week ? ' (week ' + k.week + ' of 15)' : ''}. Use it unless the user names another date.
+  return `DATA IN VIEW: ${ds.label}.${ev.simulated ? ' SIMULATED: our 2027 plan running in New Delhi, generated to test the plan; not real records. Say "simulated" when it matters. "Today" in the story is ' + ev.today + ' (end of week 10, the first money review). Dates after it are a rehearsal: one realistic run in which the plan\'s decisions are taken on time.' : ''} Event ${ev.name}, fest ${ev.eventStartDay} to ${ev.eventEndDay}; records cover ${ev.start} to ${ev.end}; INR; IST.
+SELECTED DATE: ${S.asOf}${k.week && k.week <= 15 ? ' (week ' + k.week + ' of 15)' : ''}, ${E.daysBetween(S.asOf, ev.eventStartDay)} days to the fest. Use it unless the user names another date.
+FORECAST (outside attendees): ${JSON.stringify(pick(fc, ['mode', 'bad', 'likely', 'good', 'verdict', 'target', 'stretch', 'chance']))}
 CAMPAIGNS:\n${camps}
 SNAPSHOT (engine): ${JSON.stringify(pick(k, ['registered', 'active', 'status', 'visitors', 'walkins', 'showup', 'spend', 'costPerVisitor', 'target', 'projection']))}
 ${hasBets() ? 'PACE: ' + JSON.stringify(E.pace(ds, S.asOf)[0]) + '\nRESERVE LEFT: ' + E.reserveLeft(ds) + '\n' : ''}TOP SIGNALS: ${fl.map(f => f.level + ': ' + f.title).join(' | ') || 'none'}
 OPEN TASKS: ${open || 'none'}`;
 }
-const PLAN_RULES = `PLAN RULES (2027): Money moves on expected extra attendees = people in test colleges × (test registration rate − comparison rate) × show-up by status. Never on clicks, confirms or waitlists alone. Next-tranche cost = cost per extra ÷ how well the bet scales (A). Reserve (₹3.5L) goes to the lowest next-tranche cost first, only under each bet's cap. Evidence: up to ₹50k needs 2+ weeks, 300+ people per group, 80%+ sure; above ₹50k needs 90%+ and the lift holding in 2 segments. Pace: at/above stretch = fine; above base below stretch = Watch; up to 15% below base = Warn; more = Act. Caps: Outreach ₹235, Group Pass ₹250, Day Scholars ₹200, Volunteers ₹200, Alumni ₹250, channels ₹250.`;
+const PLAN_RULES = `PLAN RULES (2027): Week 1 starts 16 Nov 2026; exams weeks 5–7; registrations open 4 Jan 2027 (week 8); reviews at weeks 10, 12, 14; fest Fri–Sat 26–27 Feb 2027. Targets: 4,800 outside attendees (stretch 9,000); 5,760 registrations (stretch 10,400); budget ₹10L incl. a ₹3.5L reserve. Money moves on expected extra attendees = people in test colleges × (test registration rate − comparison rate) × chance each registrant comes. Never on clicks or sign-ups alone. Next extra attendee cost = cost per extra ÷ how well the bet scales. Reserve goes to the cheapest next extra attendee first, only under each bet's limit, only at a review. ₹1L needs the gap to be High (90%+ likely real); ₹50k Medium (80%+), 2+ weeks, 300+ per group. A fair test with no clear gap = Stop. Forecast verdicts: Safe = even bad luck (1 in 10) beats the target; At risk = most likely beats it, bad luck doesn't; Off track = most likely misses it. Limits: Outreach ₹235, Group Pass ₹250, Day Scholars ₹200, Volunteers ₹200, Alumni ₹250, channels ₹250.`;
 const RULES = () => `You are the Growth Analyst inside the CampusFest Growth Center, for a college fest's growth team. You answer questions about attendee growth and help the team act.
 
 DEFINITIONS
 - Outside (external) people only in totals. Internal, staff and test people never count. Day Scholar Turnout is the only bet about our own students; it is judged on its own.
 - Visitor = unique external person with at least one admitted AND verified check-in. Registered = unique people with a registration up to the date; status = latest version on or before the date.
 - Spend = net INR. Campaign credit links a person to a campaign; it is not proof it caused the visit.
-- Never use records after the date being discussed. Counts from records are facts. Forecasts, expected visitors, extra attendees, next-tranche costs and what-ifs are estimates: mark them "(est.)".
+- Never use records after the date being discussed. Counts from records are facts. Forecasts, expected attendees, extra attendees, next extra attendee costs and what-ifs are estimates: mark them "(est.)". Say forecasts as bad luck / most likely / good luck plus the verdict; never as an exact probability.
 ${hasBets() ? PLAN_RULES : ''}
 
 HOW TO ANSWER
@@ -637,22 +865,23 @@ ${contextBlock()}`;
 function tools() {
   const D = { type: 'string', description: 'Date YYYY-MM-DD. Omit for the selected date.' }, C = { type: 'string', description: 'Campaign ID like C01 or B1; omit for all' }, A = () => assump();
   const list = [
-    { name: 'get_overview', description: 'Headline numbers at a date: registered, status counts, visitors, walk-ins, show-up, spend, cost per visitor, target in force, forecast, pace vs plan, budget.', inputSchema: { type: 'object', properties: { as_of: D } }, execute: i => { const d = dateArg(i.as_of); return { as_of: d, kpis: E.kpis(S.ds, d, A()), pace: E.pace(S.ds, d), budget: E.budget(S.ds, d) }; } },
+    { name: 'get_overview', description: 'Headline numbers at a date: registered, status counts, visitors, walk-ins, show-up, spend, cost per attendee, target in force, forecast with verdict, pace vs plan, budget, reserve left, and the plan decisions taken by then.', inputSchema: { type: 'object', properties: { as_of: D } }, execute: i => { const d = dateArg(i.as_of); return { as_of: d, kpis: E.kpis(S.ds, d, A()), pace: E.pace(S.ds, d), budget: E.budget(S.ds, d), reserve_left: hasBets() ? E.reserveLeft(S.ds, d) : null, plan_decisions_taken: E.planDecisionsAt(S.ds, d).map(p => pick(p, ['decided_at', 'title', 'reason'])) }; } },
     { name: 'get_campaigns', description: 'Per-campaign table: kind (channel/bet), owner, status, planned budget, spend, registered, confirmed, cancelled, visitors, show-up, expected visitors (A), cost per registration, cost per visitor, cost per expected visitor (A), opt-outs.', inputSchema: { type: 'object', properties: { as_of: D, campaign_id: C } }, execute: i => { const d = dateArg(i.as_of), cid = campArg(i.campaign_id); let r = E.campaignRows(S.ds, d, { assumptions: A() }); if (cid) r = r.filter(x => x.campaign_id === cid); return { as_of: d, rows: r.map(x => pick(x, ['campaign_id', 'campaign', 'kind', 'owner', 'status', 'planned_budget_inr', 'spend', 'registered', 'confirmed', 'interested', 'cancelled', 'cancel_rate', 'visitors', 'showup', 'expected_visitors', 'cost_per_registration', 'cost_per_visitor', 'cost_per_expected_visitor', 'opt_outs', 'opt_out_rate', 'open_rate'])) }; } },
     { name: 'get_bets', description: 'Each bet: test vs comparison rates, lift, how sure, extra registrations, expected extra attendees (A), cost per extra, next-tranche cost, cap, evidence gaps, decision (Scale/Keep/Change/Stop/Too early) and the suggested reserve release.', inputSchema: { type: 'object', properties: { as_of: D } }, execute: i => { const d = dateArg(i.as_of); return { as_of: d, bets: E.betRows(S.ds, d, A()).map(b => { const x = Object.assign({}, b); delete x.basis; return x; }), reserve: E.reservePlan(S.ds, d, A()) }; } },
+    { name: 'get_forecast', description: 'Outside-attendee forecast at a date: bad luck (1 in 10 runs worse), most likely, good luck, the target, and the verdict (Safe / At risk / Off track). Optionally test moving money now: release reserve to a bet, or move budget between campaigns, and see the forecast after.', inputSchema: { type: 'object', properties: { as_of: D, release_to_bet: { type: 'string', description: 'Bet ID or name to release reserve to' }, amount: { type: 'number', description: 'INR' }, move_from: { type: 'string', description: 'Campaign to move budget from' }, move_to: { type: 'string', description: 'Campaign to move budget to' } } }, execute: i => { const d = dateArg(i.as_of), base = E.forecast(S.ds, d, A()); let kind = null, p = null; if (i.release_to_bet && i.amount) { kind = 'release_reserve'; p = { kind, campaign_id: campArg(i.release_to_bet), amount: Number(i.amount) }; } else if (i.move_from && i.move_to && i.amount) { kind = 'move_budget'; p = { kind, campaign_id: campArg(i.move_from), to: campArg(i.move_to), amount: Number(i.amount) }; } const pk = f => pick(f, ['mode', 'bad', 'likely', 'good', 'verdict', 'target', 'stretch', 'chance', 'basis']); if (!p) return { as_of: d, forecast: pk(base) }; const keep = S.asOf; S.asOf = d; const bets = E.betRows(S.ds, d, A()), rows = E.campaignRows(S.ds, d, { assumptions: A() }), next = id => { const b = bets.find(x => x.campaign_id === id); if (b) return b.next_tranche_cost; const r = rows.find(x => x.campaign_id === id); return r && r.cost_per_expected_visitor ? r.cost_per_expected_visitor / A().scale_factor.value : null; }; S.asOf = keep; const extra = kind === 'release_reserve' ? [{ amount: p.amount, cost: next(p.campaign_id) }] : [{ amount: -p.amount, cost: next(p.campaign_id) }, { amount: p.amount, cost: next(p.to) }]; return { as_of: d, before: pk(base), after: pk(E.forecast(S.ds, d, A(), { extra: extra.filter(x => x.cost) })), assumption: 'Each rupee buys extra attendees at the bet\'s next extra attendee cost, delivering 50–100% of it (most likely 80%).', note: 'Estimate. Nothing has changed; use propose_action to do it.' }; } },
     { name: 'calculate', description: 'Exact arithmetic: + - * / ^ ( ) and % as percent. Example: "(84300/238)-250".', inputSchema: { type: 'object', properties: { expression: { type: 'string' } }, required: ['expression'] }, execute: i => ({ expression: String(i.expression), result: E.calculate(i.expression) }) },
     { name: 'propose_action', description: 'Open a confirmation panel for an action. Nothing changes until the user confirms.', inputSchema: { type: 'object', properties: { action: { type: 'string', enum: Object.keys(KINDS) }, campaign_id: { type: 'string' }, to_campaign_id: { type: 'string', description: 'For move_budget' }, amount: { type: 'number', description: 'INR' }, title: { type: 'string', description: 'Short task title' }, owner_id: { type: 'string', description: 'T03-T06, GL growth lead, SEC security/operations, CORE fest core team; default the campaign owner' }, due_date: { type: 'string' }, review_date: { type: 'string' }, reason: { type: 'string' }, expected_result: { type: 'string' }, metric_to_check: { type: 'string', enum: Object.keys(METRICS) } }, required: ['action', 'title', 'reason'] },
       execute: i => { if (!KINDS[i.action]) throw new Error('Unknown action'); const cid = i.campaign_id ? campArg(i.campaign_id) : '', to = i.to_campaign_id ? campArg(i.to_campaign_id) : '', c = S.ds.camps.get(cid), owner = i.owner_id && owners()[i.owner_id] ? i.owner_id : (c ? c.owner_id : 'GL');
         setTimeout(() => openDraft({ kind: i.action, campaign_id: cid || '', to, amount: Number(i.amount) || 0, title: String(i.title).slice(0, 160), owner, due: isDate(i.due_date) ? i.due_date : E.addDays(S.asOf, 3), review_date: isDate(i.review_date) ? i.review_date : undefined, reason: String(i.reason || ''), expected: String(i.expected_result || ''), metric: i.metric_to_check && METRICS[i.metric_to_check] ? { key: i.metric_to_check, campaign_id: cid || null } : null, source: 'analyst' }), 0);
         return { shown_to_user: true, applied: false, note: 'A confirmation panel is open. The user must press Confirm.' }; } },
     { name: 'query_data', description: 'Count, sum, average, min or max over a table at a date, with filters and grouping, for questions other tools do not cover. Tables: ' + Object.keys(E.QUERY_TABLES).join(', ') + '. A bad field returns the field list.', inputSchema: { type: 'object', properties: { table: { type: 'string', enum: Object.keys(E.QUERY_TABLES) }, as_of: D, filters: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, op: { type: 'string', enum: ['=', '!=', '>', '>=', '<', '<=', 'in', 'contains'] }, value: { type: 'string', description: 'Value to compare with; numbers as digits' } } } }, group_by: { type: 'array', items: { type: 'string' } }, aggregate: { type: 'string', enum: ['count', 'count_distinct', 'sum', 'avg', 'min', 'max'] }, field: { type: 'string' }, limit: { type: 'number' } }, required: ['table'] }, execute: i => E.query(S.ds, dateArg(i.as_of), { table: i.table, filters: (Array.isArray(i.filters) ? i.filters : []).map(f => Object.assign({}, f, { value: typeof f.value === 'string' && /^-?\d+(\.\d+)?$/.test(f.value.trim()) ? Number(f.value) : f.value === 'true' ? true : f.value === 'false' ? false : f.value })), group_by: Array.isArray(i.group_by) ? i.group_by : [], aggregate: i.aggregate || 'count', field: i.field, limit: Number(i.limit) || 25 }) },
-    { name: 'get_signals', description: 'Watch/Warn/Act signals at a date with evidence, owner and suggested action.', inputSchema: { type: 'object', properties: { as_of: D } }, execute: i => E.flags(S.ds, dateArg(i.as_of), rules(), A()) },
+    { name: 'get_signals', description: 'Watch/Warn/Act signals at a date: one-line reason with its number, evidence, why it matters, what happens if we do nothing, owner and suggested action.', inputSchema: { type: 'object', properties: { as_of: D } }, execute: i => E.flags(S.ds, dateArg(i.as_of), rules(), A()) },
     { name: 'what_if_move_budget', description: 'Estimate visitors lost and gained if spend moves between two campaigns, with diminishing returns (A).', inputSchema: { type: 'object', properties: { from_campaign: { type: 'string' }, to_campaign: { type: 'string' }, amount: { type: 'number' }, as_of: D }, required: ['from_campaign', 'to_campaign', 'amount'] }, execute: i => E.whatIf(S.ds, dateArg(i.as_of), campArg(i.from_campaign), campArg(i.to_campaign), Number(i.amount) || 0, A()) },
     { name: 'explain_change', description: 'What changed between two dates: new registrations, cancellations, visitors, spend, and by campaign.', inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, required: ['from', 'to'] }, execute: i => E.explainChange(S.ds, dateArg(i.from), dateArg(i.to), { assumptions: A() }) },
-    { name: 'get_funnel', description: 'Funnel at a date: identified → engaged → form started → registered → active → confirmed → visited, with step rates; plus anonymous traffic.', inputSchema: { type: 'object', properties: { as_of: D, campaign_id: C } }, execute: i => { const d = dateArg(i.as_of), cid = campArg(i.campaign_id); return { identified: E.funnel(S.ds, d, cid), anonymous: E.anonFunnel(S.ds, d, cid) }; } },
+    { name: 'get_funnel', description: 'Funnel at a date, the same four steps every year: reached → registered → confirmed → attended (expected before the fest), with step rates, cost each and targets; plus anonymous ad traffic.', inputSchema: { type: 'object', properties: { as_of: D, campaign_id: C } }, execute: i => { const d = dateArg(i.as_of), cid = campArg(i.campaign_id); return { funnel: E.funnelView(S.ds, d, A(), cid), anonymous: E.anonFunnel(S.ds, d, cid) }; } },
     { name: 'get_trend', description: 'Daily or weekly values and running totals of one metric between two dates.', inputSchema: { type: 'object', properties: { metric: { type: 'string', enum: ['registrations', 'identified', 'spend', 'visitors', 'form_starts', 'sessions', 'cancellations'] }, grain: { type: 'string', enum: ['day', 'week'] }, from: { type: 'string' }, to: { type: 'string' }, campaign_id: C }, required: ['metric'] }, execute: i => { const r = E.trend(S.ds, i.metric, i.grain === 'day' ? 'day' : 'week', isDate(i.from) ? i.from : S.ds.event.start, dateArg(i.to), campArg(i.campaign_id)); if (r.rows && r.rows.length > 70) r.rows = r.rows.slice(-70); return r; } },
     { name: 'get_event_days', description: 'Event-day facts: visitors per day, both days, hourly entries, peak vs assumed gate capacity, check-in quality.', inputSchema: { type: 'object', properties: { as_of: D } }, execute: i => E.dayStats(S.ds, dateArg(i.as_of), A()) },
-    { name: 'get_tasks_and_settings', description: 'Tasks (owner, due, status), logged decisions with before/now numbers, assumptions, thresholds and data cleaning.', inputSchema: { type: 'object', properties: {} }, execute: () => ({ tasks: S.tasks.filter(t => (t.base || '25') === baseOf()).map(t => ({ title: t.title, owner: ownerLabel(t.owner), due: t.due, status: t.status })), decisions: S.decisions.filter(d => (d.base || '25') === baseOf()).map(d => ({ title: d.title, decided: d.as_of, review: d.review_date, status: d.status, outcome: d.outcome || null, watching: metricLabel(d.metric), before: d.metric ? d.metric.before : null, now: metricNow(d.metric) })), assumptions: A(), thresholds: rules(), quality: E.quality(S.ds, S.asOf) }) }
+    { name: 'get_tasks_and_settings', description: 'Tasks (owner, due, status), logged decisions with before/now numbers, assumptions, thresholds and data cleaning.', inputSchema: { type: 'object', properties: {} }, execute: () => ({ tasks: S.tasks.filter(t => (t.base || '25') === baseOf()).map(t => ({ title: t.title, owner: ownerLabel(t.owner), due: t.due, status: t.status })), decisions: S.decisions.filter(d => (d.base || '25') === baseOf()).map(d => ({ title: d.title, decided: d.as_of, review: d.review_date, status: d.status, outcome: d.outcome || null, watching: metricLabel(d.metric), before: d.metric ? d.metric.before : null, now: metricNow(d.metric) })), plan_decisions: sim() ? E.planDecisionsAt(S.ds, S.asOf).map(p => pick(p, ['decided_at', 'title', 'reason', 'review_at'])) : [], assumptions: Object.fromEntries(Object.entries(A()).map(([k, a]) => [k, { value: a.value, range: [a.low, a.high], evidence: a.evidence }])), quality: E.quality(S.ds, S.asOf) }) }
   ];
   return (hasBets() ? list : list.filter(t => t.name !== 'get_bets')).slice(0, chat.maxTools);
 }
@@ -773,6 +1002,7 @@ async function start() {
   try { await loadBase('27'); } catch (e) { $('#main').innerHTML = `<div class="loading">Could not load the data (${esc(e.message)}). Reload the page.</div>`; return; }
   rebuild(); setPage();
   initChat(); Store.init();
+  loadBase('25').then(() => { S.cache.ly = null; render(); }).catch(() => {});
 }
 start();
 }
