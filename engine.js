@@ -19,8 +19,8 @@
     pace_curve: ['week', 'share'],
     plan_decisions: ['decision_id', 'decided_at', 'kind']
   };
-  const TIME_FIELDS = { event: ['history_start', 'history_end', 'event_starts_at', 'event_ends_at', 'plan_start', 'registration_opens', 'today'], plan_decisions: ['decided_at', 'review_at'], targets: ['effective_at'], campaigns: ['created_at', 'planned_start_at', 'planned_end_at'], daily: ['activity_date'], people: ['first_seen_at'], interactions: ['occurred_at'], registrations: ['registered_at'], reg_history: ['effective_at'], checkins: ['occurred_at'] };
-  const NUM_FIELDS = { pace_curve: ['week', 'share'], plan_decisions: ['amount_inr'], event: ['reserve_inr', 'tranche_inr', 'gate_capacity_per_hour'], targets: ['identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch'], daily: ['impressions', 'clicks', 'reported_reach', 'landing_page_sessions', 'registration_starts', 'marketing_spend_inr'], campaigns: ['planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'bet_rank', 'reserve_released_inr'] };
+  const TIME_FIELDS = { event: ['history_start', 'history_end', 'event_starts_at', 'event_ends_at', 'plan_start', 'registration_opens', 'today', 'competition_opens', 'big_push'], plan_decisions: ['decided_at', 'review_at'], targets: ['effective_at'], campaigns: ['created_at', 'planned_start_at', 'planned_end_at'], daily: ['activity_date'], people: ['first_seen_at'], interactions: ['occurred_at'], registrations: ['registered_at'], reg_history: ['effective_at'], checkins: ['occurred_at'] };
+  const NUM_FIELDS = { pace_curve: ['week', 'share'], plan_decisions: ['amount_inr'], event: ['reserve_inr', 'tranche_inr', 'gate_capacity_per_hour'], targets: ['identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch', 'teams_goal', 'teams_by_week6', 'teams_by_week8'], daily: ['impressions', 'clicks', 'reported_reach', 'landing_page_sessions', 'registration_starts', 'marketing_spend_inr'], campaigns: ['planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'bet_rank', 'reserve_released_inr'] };
   const ACTIVE = ['confirmed', 'interested', 'waitlisted'];
   const DEFAULT_OWNERS = { T03: 'Meera Iyer', T04: 'Arjun Verma', T05: 'Nisha Rao', T06: 'Dev Malhotra' };
 
@@ -130,7 +130,7 @@
       timezone: ev.timezone || 'Asia/Kolkata', currency: ev.currency || 'INR',
       simulated: ev.simulated === true || ev.simulated === 'TRUE' || ev.simulated === 1, city: ev.city || null,
       planStart: day(ev.plan_start), regOpens: day(ev.registration_opens), reserve: num(ev.reserve_inr), tranche: num(ev.tranche_inr),
-      today: day(ev.today), gateCap: num(ev.gate_capacity_per_hour) || null
+      today: day(ev.today), gateCap: num(ev.gate_capacity_per_hour) || null, competitionOpens: day(ev.competition_opens), bigPush: day(ev.big_push)
     };
     const skip = new Set(raw.plan_skip || []);
     ds.plan = (tb.plan_decisions || []).filter(x => x.decision_id && !skip.has(x.decision_id)).sort((a, b) => (a.decided_at || '').localeCompare(b.decided_at || ''));
@@ -187,6 +187,9 @@
       s.regs.push(x); if (!s.regByPerson.has(r.person_id)) s.regByPerson.set(r.person_id, x);
     });
     s.registered = s.regByPerson.size;
+    // competition teams register early and are paced on their own (plan: 150 teams by week 6, 250 by week 8, 300 by week 10)
+    s.compRegistered = 0; const teams = new Set(); s.regByPerson.forEach((r, p) => { const pp = ds.people.get(p); if (pp && pp.segment === 'competitor') { s.compRegistered++; if (pp.team_id && r.status !== 'cancelled') teams.add(pp.team_id); } }); s.teams = teams.size;
+    s.passRegistered = s.registered - s.compRegistered;
     s.status = { confirmed: 0, interested: 0, waitlisted: 0, cancelled: 0 };
     s.regByPerson.forEach(x => { s.status[x.status] = (s.status[x.status] || 0) + 1; });
     s.active = ACTIVE.reduce((a, k) => a + (s.status[k] || 0), 0);
@@ -295,7 +298,7 @@
     const o = opts || {}, N = o.runs || 1000, s = snapshot(ds, D), t = s.target, ev = ds.event;
     const base = t ? t.unique_external_visitors_goal : null, stretch = t ? (t.stretch_visitors_goal || null) : null;
     const out = { asOf: D, target: base, stretch, registered: s.registered, visitors_so_far: s.visitorCount };
-    const verdict = (p10, p50) => base ? (p10 >= base ? 'Safe' : p50 >= base ? 'At risk' : 'Off track') : null;
+    const verdict = (p10, p50) => base ? (p10 >= base ? 'Safe' : p50 >= base ? 'Ahead, not safe yet' : 'Off track') : null;
     if (D >= ev.eventEndDay) return Object.assign(out, { mode: 'actual', bad: s.visitorCount, likely: s.visitorCount, good: s.visitorCount, verdict: base ? (s.visitorCount >= base ? 'Hit' : 'Missed') : null, chance: null, basis: 'Verified check-ins: the fest is over' });
     const R = s.registered; if (!R) return Object.assign(out, { mode: 'too early', verdict: null, basis: 'No registrations yet' });
     const daysLeft = daysBetween(D, ev.eventStartDay), live = D >= ev.eventStartDay;
@@ -304,7 +307,7 @@
       const sh = shareAt(ds, D);
       if (sh !== null) {
         if (sh < 0.1) return Object.assign(out, { mode: 'too early', verdict: null, share_expected: round(sh, 3), basis: 'Under 10% of registrations expected by now: too early to forecast' });
-        future = R / sh - R; how = 'registrations so far ÷ ' + Math.round(sh * 100) + '% expected by now on the plan curve';
+        const P = s.passRegistered; future = P / sh - P; how = 'pass registrations so far ÷ ' + Math.round(sh * 100) + '% expected by now on 2025\'s curve' + (s.compRegistered ? ', plus ' + nf(s.compRegistered) + ' competitors already in' : '');
       } else {
         const ser = dailySeries(ds, addDays(D, -6), D), rr = ser.registrations.reduce((a, b) => a + b, 0) / 7, dl = Math.max(0, daysBetween(D, addDays(ev.eventStartDay, -1)));
         if (t && t.registration_goal && R < 0.1 * t.registration_goal) return Object.assign(out, { mode: 'too early', verdict: null, basis: 'Under 10% of the registration goal is in: too early to forecast' });
@@ -347,13 +350,20 @@
     return { review, eve: addDays(ev.eventStartDay, -1), result: ev.end, today: ev.today || null, curve };
   }
 
+  function teamPlan(ds, D, t) {
+    if (!t || !t.teams_goal || !ds.event.competitionOpens) return null;
+    const pts = [[ds.event.competitionOpens, 0], [addDays(ds.event.planStart, 41), t.teams_by_week6 || 0], [addDays(ds.event.planStart, 55), t.teams_by_week8 || 0], [addDays(ds.event.planStart, 69), t.teams_goal]];
+    if (D <= pts[0][0]) return { goal: t.teams_goal, by_now: 0 };
+    for (let i = 1; i < pts.length; i++) if (D <= pts[i][0]) { const a = pts[i - 1], b = pts[i]; return { goal: t.teams_goal, by_now: Math.round(a[1] + (b[1] - a[1]) * daysBetween(a[0], D) / daysBetween(a[0], b[0])) }; }
+    return { goal: t.teams_goal, by_now: t.teams_goal };
+  }
   function kpis(ds, D, assump) {
     const s = snapshot(ds, D), t = s.target;
     const proj = projection(ds, D, assump);
     const g = t ? { identified: t.identified_external_people_goal || null, registered: t.registration_goal, visitors: t.unique_external_visitors_goal, budget: t.marketing_budget_inr, version: t.target_version, since: t.effective_at, stretch_registered: t.stretch_registration_goal || null, stretch_visitors: t.stretch_visitors_goal || null, all_attendees_base: t.all_attendees_base || null, all_attendees_stretch: t.all_attendees_stretch || null } : null;
     return {
       asOf: D, dataset: ds.label, target: g,
-      identified: s.identified, registered: s.registered, active: s.active, status: Object.assign({}, s.status),
+      identified: s.identified, registered: s.registered, passRegistered: s.passRegistered, competitors: s.compRegistered, teams: s.teams, teamPlan: teamPlan(ds, D, t), active: s.active, status: Object.assign({}, s.status),
       visitors: s.visitorCount, visitorsRegistered: s.visitorsRegistered, walkins: s.walkins,
       showup: round(s.showup, 4), walkinShare: round(div(s.walkins, s.visitorCount), 4),
       spend: s.spend, budgetUsed: g ? round(div(s.spend, g.budget), 4) : null,
@@ -479,9 +489,9 @@
     const s = snapshot(ds, D), t = s.target; if (!t) return [];
     const sh = shareAt(ds, D);
     if (sh !== null) {
-      const bp = t.registration_goal * sh, sp = t.stretch_registration_goal ? t.stretch_registration_goal * sh : null, a = s.registered;
+      const bp = t.registration_goal * sh, sp = t.stretch_registration_goal ? t.stretch_registration_goal * sh : null, a = s.passRegistered;
       const level = sh < 0.03 ? 'none' : sp !== null && a >= sp ? 'ok' : a >= bp ? 'watch' : a >= 0.85 * bp ? 'warn' : 'act';
-      return [{ key: 'registered', curve: true, goal_label: 'Outside registrations', week: weekOf(ds, D), expected_share: round(sh, 3), actual: a, base_goal: t.registration_goal, stretch_goal: t.stretch_registration_goal || null, base_pace: Math.round(bp), stretch_pace: sp !== null ? Math.round(sp) : null, vs_base: round(div(a, bp), 3), level, rule: 'At or above stretch pace = fine; above base, below stretch = Watch; up to 15% below base = Warn; more than 15% below base = Act' }];
+      return [{ key: 'registered', curve: true, goal_label: 'Outside pass registrations (competition teams paced separately)', competitors: s.compRegistered, teams: s.teams, week: weekOf(ds, D), expected_share: round(sh, 3), actual: a, base_goal: t.registration_goal, stretch_goal: t.stretch_registration_goal || null, base_pace: Math.round(bp), stretch_pace: sp !== null ? Math.round(sp) : null, vs_base: round(div(a, bp), 3), level, rule: 'At or above stretch pace = fine; above base, below stretch = Watch; up to 15% below base = Warn; more than 15% below base = Act' }];
     }
     const ser = dailySeries(ds, addDays(D, -6), D);
     const run = k => ser[k].reduce((a, b) => a + b, 0) / 7;
@@ -661,7 +671,7 @@
     // 1. are we heading for the target?
     if (!ended) {
       const fc = forecast(ds, D, assump);
-      if (fc.verdict && fc.verdict !== 'Safe') add({ id: 'forecast-visitors', term: 'Outcome', level: fc.verdict === 'Off track' ? 'act' : 'warn', title: 'Attendee target: ' + (fc.verdict === 'Off track' ? 'off track' : 'at risk'),
+      if (fc.verdict && fc.verdict !== 'Safe') add({ id: 'forecast-visitors', term: 'Outcome', level: fc.verdict === 'Off track' ? 'act' : 'warn', title: 'Attendee target: ' + (fc.verdict === 'Off track' ? 'off track' : 'ahead, not safe yet'),
         reason: (fc.verdict === 'Off track' ? 'Most likely ' + nf(fc.likely) : 'With bad luck ' + nf(fc.bad)) + ' outside attendees vs the ' + nf(fc.target) + ' target', value: fc.likely,
         evidence: 'Forecast: bad luck ' + nf(fc.bad) + ' · most likely ' + nf(fc.likely) + ' · good luck ' + nf(fc.good) + ' vs target ' + nf(fc.target) + '. ' + fc.basis,
         matters: 'Attendees are the outcome we are judged on.', if_nothing: 'We land near the most likely number, ' + nf(fc.likely) + '.',
