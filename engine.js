@@ -613,6 +613,7 @@
         if (a.test.n < minN || a.comparison.n < minN) evidence.push(nf(Math.min(a.test.n, a.comparison.n)) + ' people in the smaller group; need ' + minN);
         if (ds.event.regOpens && D < ds.event.regOpens) evidence.push('registrations open ' + dlabel(ds.event.regOpens));
         else if (weeks < 2) evidence.push('under 2 weeks of registrations');
+        else if (a.test.reg < 50) evidence.push('only ' + a.test.reg + ' sign-ups in the test group; need 50');
         fair = !evidence.length;
         if (sure !== null && sure < 0.8) evidence.push('gap only ' + Math.round(sure * 100) + '% likely to be real; need 80%');
       } else {
