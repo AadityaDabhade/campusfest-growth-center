@@ -367,7 +367,7 @@ PAGES.overview = () => {
   const groups = groupFlags(E.flags(ds, D, rules(), A)).filter(x => x.level !== 'watch'), top = groups[0];
   const watch = top ? `<div class="watch"><span class="lvl ${top.level}">${top.level}</span><b>Watch now:</b> ${esc(top.subj)}: ${esc(top.items[0].reason)}. <button class="link" data-act="flagd" data-id="${esc(top.items[0].id)}" type="button">Why?</button>${groups.length > 1 ? ` · <a href="#insights">${groups.length - 1} more on Insights</a>` : ''}</div>` : `<div class="watch ok"><b>Watch now:</b> nothing at Warn or Act.</div>`;
   // scorecard: targets vs actuals
-  const conf = k.active ? k.status.confirmed / k.active : null;
+  const conf = k.registered ? k.status.confirmed / k.registered : null;
   const heading = x => x && (est || done) ? (done ? pill(x.verdict) : `<b>${fmt(x.likely)}</b><div class="note">${range(x)}</div>`) : '–';
   // reach plan = our reach target × the share of its final reach 2025 had at the same number of days before the fest
   const reachShare = l && lyEnd ? l.k.identified / lyEnd.identified : null, reachPlan = g.identified && host && reachShare >= 0.1 && !started() ? Math.round(g.identified * reachShare) : null;
