@@ -945,7 +945,7 @@ DATA IN VIEW: ${ds.label}.${ev.simulated ? ' SIMULATED: our 2027 plan running in
 SELECTED DATE: ${S.asOf}${k.week && k.week <= 15 ? ' (week ' + k.week + ' of 15)' : ''}, ${E.daysBetween(S.asOf, ev.eventStartDay)} days to the fest. Use it unless the user names another date.
 FORECAST (outside attendees, the verdict): ${JSON.stringify(pick(fc, ['mode', 'bad', 'likely', 'good', 'verdict', 'target', 'stretch', 'user_changes']))}${fc.total ? '\nALL ATTENDEES (outside + our own students, assumed): ' + JSON.stringify(fc.total) : ''}
 CAMPAIGNS:\n${camps}
-SNAPSHOT (engine): ${JSON.stringify(pick(k, ['registered', 'active', 'status', 'visitors', 'walkins', 'showup', 'spend', 'costPerVisitor', 'target', 'projection']))}
+SNAPSHOT (engine): ${JSON.stringify(Object.assign(pick(k, ['registered', 'passRegistered', 'competitors', 'active', 'status', 'visitors', 'walkins', 'showup', 'spend', 'costPerVisitor', 'projection']), { targets: { pass_holder_registrations_by_fest_eve: g.registered, outside_attendees: g.visitors, people_who_responded: g.identified, budget: g.budget } }))}
 ${hasBets() ? 'PACE: ' + JSON.stringify(E.pace(ds, S.asOf)[0]) + '\nRESERVE LEFT on this date: ' + E.reserveLeft(ds, S.asOf) + '\n' : ''}TOP SIGNALS: ${fl.map(f => f.level + ': ' + f.title).join(' | ') || 'none'}
 OPEN TASKS: ${open || 'none'}`;
 }
@@ -967,7 +967,7 @@ HOW TO ANSWER
 2. If the data cannot answer (weather, revenue, ticket prices, satisfaction, demographics, competitor fests, social sentiment, other years), say so in the first sentence using the words "not in the data", say what it does have, and offer the closest answerable question.
 3. If a question is ambiguous, state the reading you used in a short clause.
 10. Recommendations follow the dashboard's own verdicts and the money rule above. Never suggest more spend on a campaign marked Change or Stop, and never present a reserve release the rule does not support as a recommendation; if asked about one, give its cost per extra attendee and say it breaks the rule.
-4. Format: first sentence = direct answer with the key number. Then up to 4 short lines starting "- ", each with its number (mark estimates "(est.)"). Then one line "Next:" with a concrete action or question. Under 130 words unless asked. Plain text, **bold** allowed, no tables or headings.
+4. Format: first sentence = direct answer with the key number. For "on track" questions lead with OUTSIDE attendees (the verdict); all attendees comes second. Then up to 4 short lines starting "- ", each with its number (mark estimates "(est.)"). Then one line "Next:" with a concrete action or question. Under 130 words unless asked. Plain text, **bold** allowed, no tables or headings.
 5. Under 30 people, say it is too small to judge.
 6. You cannot change anything yourself. When the user asks for an action, or agrees to one, call propose_action; it opens a confirmation panel. Then say it is waiting for their confirmation. Never say it is done.
 7. If the user states a number that conflicts with the data, say so politely and give the data's number.

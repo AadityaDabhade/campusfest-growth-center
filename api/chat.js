@@ -47,7 +47,10 @@ module.exports = async (req, res) => {
       if (r.status === 400 && !/tool|function/i.test(r.message)) return res.status(400).json({ error: { code: 'upstream', message: r.message }, model: pick.m });
       markBusy(); return busy('Groq: ' + r.message);
     }
-    const payload = { contents: body.contents, generationConfig: { maxOutputTokens: 4096 } };
+    // A turn answered by Groq has tool calls without Gemini's thought signature, and Gemini 3 refuses such
+    // history. Google documents a placeholder signature for calls it did not make itself.
+    const contents = body.contents.map(c => { if (c.role !== 'model' || !Array.isArray(c.parts)) return c; const fc = c.parts.filter(x => x.functionCall); if (!fc.length || fc[0].thoughtSignature) return c; return Object.assign({}, c, { parts: c.parts.map(x => x === fc[0] ? Object.assign({}, x, { thoughtSignature: 'skip_thought_signature_validator' }) : x) }); });
+    const payload = { contents, generationConfig: { maxOutputTokens: 4096 } };
     if (body.system) payload.systemInstruction = { parts: [{ text: String(body.system).slice(0, 60000) }] };
     if (Array.isArray(body.tools) && body.tools.length) payload.tools = [{ functionDeclarations: body.tools.slice(0, 20) }];
     const call = p => fetch(`${BASE}/models/${encodeURIComponent(pick.m)}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': gKey }, body: JSON.stringify(p), signal: ctl.signal });
