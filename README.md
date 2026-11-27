@@ -140,7 +140,7 @@ Everything on slide 1 comes from `model/plan_model.py` (run `python3 model/plan_
 
 | Step | 2025 actual | 2027 base | Calculation (2027) |
 |---|---|---|---|
-| Reach | 6.7 lakh reported reach (summed over days, so not unique people), 10.3 lakh impressions, 32,188 clicks | ~35,000 named people: students on the lists of the 33 colleges we work with (~30,000) and alumni in NCR (~3,750), plus ads | A: list sizes from the bet designs |
+| Reach | 6.7 lakh reported reach (summed over days, so not unique people), 10.3 lakh impressions, 32,070 clicks | ~35,000 named people: students on the lists of the 33 colleges we work with (~30,000) and alumni in NCR (~3,750), plus ads | A: list sizes from the bet designs |
 | Responded (did something back; walk-ins excluded) | 3,500 | ~6,000 (target 6,100) | 4,811 registrations ÷ 80% |
 | Registered | 2,800 (80% of responded) | ~4,811 = 3,936 passes + ~875 team members (targets round up to 4,000 passes) | Passes: (3,800 × 0.94 − 875 × 90%) ÷ 70.75% = 3,936 |
 | Registered people who came | 1,925 (68.75%) | ~3,570 | 3,936 × 70.75% + 875 × 90% |
@@ -180,7 +180,7 @@ Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus th
 **One rule, in this order, for every bet** (the Bets page and the analyst apply exactly this):
 
 1. **Too early** if under 300 people on a side, under 2 weeks of sign-ups, or under 50 sign-ups in the test group.
-2. **Stop** if the gap is not 80%+ likely to be real, or is under 2 points. Its money goes to College Partnerships. "Likely to be real" compares college with college (Welch t-test) when each side has 3+ colleges; otherwise person with person.
+2. **Stop** if the gap is not 80%+ likely to be real, or is under 2 points. Its unspent money is not spent elsewhere (nothing beats the limit that late). "Likely to be real" compares college with college (Welch t-test) when each side has 3+ colleges; otherwise person with person.
 3. **Change** (fix how it works; no more money) if its own budget ÷ extra attendees projected to the fest is above ₹300, **or** it is on course for under 60% of the extra attendees the plan counts on.
 4. **Scale** only at a money review (weeks 7, 10, 12), if a ₹50k top-up buys extra attendees at ≤ ₹300 each after the 80% yield (₹1L if that also passes and the gap is High, 90%+).
 5. Otherwise **Keep**.
@@ -228,7 +228,7 @@ Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus th
 - **Week 12:** Day Scholar Turnout stopped (no real gap); its unspent money is not spent elsewhere. Forecast 3,460 / 3,650 / 3,860, still Off track, and the ladder still cannot close the gap: the ₹2.5L reserve is held.
 - **Result:** **3,756 outside attendees**, 44 (1%) under the 3,800 base and inside the week-10 range (3,260–3,790); 7,200 of our own students; ₹4.2L spent; the ₹2.5L reserve and the ₹2.8L not committed go back.
   - That is what a base built on the bad-luck case means: with the bets at 70% of plan, the fest still lands within 1% of it.
-  - In hindsight one ₹50k step (₹484 each) would have closed the 44 gap. The rule did not take it because the week-10 forecast said it could not reach the target; the forecast was 7% low because sign-ups came late. The lesson is in the forecast, not the rule: the range now allows for later sign-ups (it held the result).
+  - In hindsight one ₹50k step (₹484 each) would have closed the 44 gap. The rule did not take it because it is all-or-nothing: the week-10 forecast (7% low, as sign-ups came late) said the ladder could not reach the target. That is a real weakness: when the bets run behind, protect steps get dearer exactly when they are needed, and an all-or-nothing gate can leave cheap help unused. A better version would decide on the *chance* of reaching the target (one ₹484 step lifted it from about 9% to 19%) and add levers that do not depend on the bets (show-up reminders, waitlist release). We leave the simpler rule in place and say so.
 
 ## 7. The Growth Center: a five-minute tour
 
@@ -312,7 +312,7 @@ Local: `npx vercel dev`. Regenerate the 2027 data: `node scripts/settle27.js`. P
 - **2027 numbers are simulated.** They show the plan and the system working, not real results. The rehearsal is one run; a different run would give different numbers.
 - **Our own students (~7,700) are an assumption.** 2025 has no data on them; a week-2 survey is the first check. That is why the verdict is on outside attendees.
 - **Bet effects are planning estimates** until the tests read out; the ranges are our assumptions, listed in section 3.1.
-- **The ₹300 price and the ₹600 protect ceiling are judgments.** ₹300 rests on what 2025 paid for ads; ₹600 says a commitment is worth paying double for. Both can be changed on the Data page and every screen follows.
+- **The ₹300 price and the ₹600 protect ceiling are judgments.** ₹300 sits at 2025's *average* cost of an ad attendee; 2025's *next* ad attendee cost about ₹550–670, so ₹300 is the cautious end. A higher limit buys more people (in the model, most likely rises to about 4,800 at ₹400 and 4,950 at ₹550, with more of the budget spent). The limit is a dial, not a fact: change it on the Data page and every screen and the analyst follow.
 - **Tests compare a few colleges.** With 6 vs 6 or 4 vs 4 colleges, real differences between colleges can remain. The college-level test is conservative, but five bets across three reviews still risk a false positive.
 - **Signals not in the data:** crew captains, share of passes in groups, survey answers and deposits are in the plan but not tracked in the simulated tables.
 - **Saving:** on the hosted site, edits and tasks are saved in the reviewer's browser (they survive a reload but are not shared). The Claude version shares them between signed-in viewers.

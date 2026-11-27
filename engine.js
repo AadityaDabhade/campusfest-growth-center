@@ -819,7 +819,7 @@
         reason: (fc.verdict === 'Off track' ? 'Most likely ' + nf(fc.likely) : 'With bad luck ' + nf(fc.bad)) + ' outside attendees vs the ' + nf(fc.target) + ' target', value: fc.likely,
         evidence: 'Forecast: bad luck ' + nf(fc.bad) + ' · most likely ' + nf(fc.likely) + ' · good luck ' + nf(fc.good) + ' vs target ' + nf(fc.target) + '. ' + fc.basis,
         matters: 'Attendees are the outcome we are judged on.', if_nothing: 'We land near the most likely number, ' + nf(fc.likely) + '.',
-        owner: 'Growth lead', action: 'Release reserve to the bet with the cheapest next attendee; push confirm-your-spot reminders.', trust: 'maybe' });
+        owner: 'Growth lead', action: 'Follow the reserve rule on the Money page (grow, or protect if it closes the gap); fix bets behind plan; push confirm-your-spot reminders.', trust: 'maybe' });
     }
     pace(ds, D).forEach(p => {
       if (p.curve) {
