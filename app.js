@@ -989,6 +989,7 @@ HOW TO ANSWER
 8. Use campaign and bet names, not IDs. Never show tool names, JSON or code. Money in ₹ with Indian commas (₹1,00,000) or lakh (₹1L).
 9. For a follow-up question, reuse the earlier turns: "it", "that bet" or "same for X" refer to what was just discussed.
 10. Recommendations follow the dashboard's own verdicts and the money rule above. Never suggest more spend on a campaign marked Change or Stop. Reserve money is suggested only as the money rule's grow or protect step, and never present a reserve release the rule does not support as a recommendation; if asked about one, give its cost per extra attendee and say it breaks the rule.
+11. For any question about releasing reserve money, the answer is the RESERVE TODAY line above, word for word in substance: say what it says and why. Never compute extra attendees as money ÷ an average cost; the price of new money is the top-up price.
 
 ${contextBlock()}`;
 function tools() {
