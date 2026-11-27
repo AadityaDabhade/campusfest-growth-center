@@ -88,7 +88,7 @@ def own(c): return CO[c][6] if c else None
 dump('event', ['event_name', 'history_start', 'history_end', 'event_starts_at', 'event_ends_at', 'timezone', 'currency', 'fictional', 'simulated', 'city', 'plan_start', 'registration_opens', 'reserve_inr', 'tranche_inr', 'today', 'gate_capacity_per_hour', 'competition_opens', 'big_push', 'hostel_students', 'day_scholars'],
      [['CampusFest 2027', START.isoformat() + 'T00:00:00', END.isoformat() + 'T00:00:00', ts(FEST1, 10, 0), ts(FEST2, 21, 30), 'Asia/Kolkata', 'INR', True, True, 'New Delhi', START.isoformat() + 'T00:00:00', LAUNCH.isoformat() + 'T00:00:00', 450000, 500000, TODAY.isoformat() + 'T00:00:00', 2500, COMP_OPENS.isoformat() + 'T00:00:00', PUSH.isoformat() + 'T00:00:00', 4000, 6000]])
 dump('targets', ['effective_at', 'identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'target_version', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch', 'teams_goal', 'teams_by_week6', 'teams_by_week8'],
-     [[START.isoformat() + 'T09:00:00', 8400, 5760, 4800, 1000000, '2027 base plan', 10400, 9000, 12300, 16800, 300, 150, 250]])
+     [[START.isoformat() + 'T09:00:00', 8400, 5760, 4800, 1000000, '2027 base plan', 9800, 8300, 12300, 16300, 300, 150, 250]])
 dump('pace_curve', ['week', 'share'], CURVE)
 
 # the plan's decisions, taken on time at each review (the rehearsal after "today"). Money only follows the rules:
