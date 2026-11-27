@@ -7,7 +7,7 @@ RISA Labs Growth APM assignment · **Challenge A: Attendee Growth** · CampusFes
 - **Code:** https://github.com/AadityaDabhade/campusfest-growth-center
 - **Backup inside Claude:** https://claude.ai/artifact/KXbRrm2dBVD9GWzMAm2cST (the analyst runs on the viewer's Claude account)
 - **Slides:** `CampusFest_Growth_Strategy_Dabhade_22EX23005.pdf` (3 slides)
-- **Demo video:** `Growth_Center_demo.mp4` (the analyst answering real questions on the live site)
+- **Demo video:** `Growth_Center_demo.mp4` (2.5 min: the screens at week 10, then the analyst answering a data question, a decision, a what-if, a calculation, a follow-up, a "not in the data" question and an action with confirmation). The answers were recorded from the live site on 27 Nov 2026 and replayed against a local copy, so the video does not wait on busy free-tier models; every number and tool call runs for real.
 
 ---
 
@@ -285,7 +285,7 @@ Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus th
 - `node scripts/test.js`: the engine reproduces an independent Python calculation of the 2025 numbers at four dates (2,050 visitors, 2,800 registered, ₹2,74,000, cost per visitor by campaign), plus edits and the calculator.
 - `node scripts/t27.js`: rules that must hold for any data (the zero-range forecast equals the plain formula; same date, same answer; no data after the date; reserve never negative; the Bets page, the what-if and the forecast price money the same way; a pause lowers the forecast; your decisions never leak into rehearsal dates; the query tool counts the same people as the screens), then the rehearsal story.
 - Headless Chrome (Playwright) at 1,400 px and 390 px: every page, no console errors.
-- **Analyst:** Data → *Test the analyst* runs fixed questions whose expected answers are computed live by the engine. The demo video shows a live session (data question, calculation, follow-up, what-if, refusal, action with confirmation).
+- **Analyst:** Data → *Test the analyst* runs fixed questions (data, forecast, decision, calculation, diagnosis, a two-turn follow-up, "not in the data") whose expected answers are computed live by the engine. The demo video shows recorded live answers (see the top of this file).
 - **Independent reviews:** separate reviewer agents graded the product and the slides against the brief; their findings drove the money-rule, rehearsal and analyst fixes.
 
 ## 11. Setup
