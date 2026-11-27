@@ -6,15 +6,15 @@ Tags: S = sourced (the provided 2025 dataset or a cited source) · A = our assum
 How it works
 - FLOOR: what the plan delivers if none of the five bets beats its comparison group: paid channels on 2025's
   own cost per attendee (with diminishing returns), unpaid search, competition teams, walk-ins, and our own students.
-- ONE PRICE: each channel is funded up to the point where its NEXT attendee costs ₹300 (equal marginal cost).
-  Nothing else clears ₹300 before there is evidence, so the rest waits as reserve.
-- The five bets add extra attendees on top, each built up from its own inputs (low / likely / high).
-- The reserve (₹2.5L) has two jobs. GROW: at a review, a proven bet gets a top-up if its next attendee costs
-  ≤ ₹300 after the 80% yield. PROTECT: if the forecast is not Safe at week 10 or 12, the cheapest proven top-ups
-  are released until bad luck beats the target (the dashboard does this step; the model's stretch uses GROW only).
+- ONE PRICE: ₹300 is what one more outside attendee is worth to us (D): 2025 paid ₹274–337 per attendee for ads and
+  kept buying. Each channel is funded until its NEXT attendee costs ₹300 (equal marginal cost).
+- The reserve (₹2.5L) has two jobs. GROW: at the week-7 review, a proven bet gets a top-up if its next attendee costs
+  ≤ ₹300 after the 80% yield. PROTECT: at week 10, if the run's most likely outcome (seen with forecast error) misses the
+  base, a ladder of ₹50k steps (≤ ₹600 each, ≤ ₹1.5L per campaign) is released only if it reaches the base.
+  The other ₹2.8L is not committed: before evidence nothing buys an attendee for ≤ ₹300.
 - 20,000 runs, every input drawn from its range (triangular). The fixed seed gives the same answer every time.
-- BASE (what we commit to) = the plan without the reserve with bad luck: 9 runs in 10 do better.
-- LIKELY = the middle run. STRETCH = the plan with the reserve deployed, with good luck: 1 run in 10 does better,
+- BASE (what we commit to) = the plan without the reserve with bad luck (10th percentile, rounded: 89% of runs reach it).
+- LIKELY = the middle run. STRETCH = the plan with the reserve deployed, with good luck (90th percentile, rounded down: 12% of runs reach it),
   capped by the gates.
 """
 import random
@@ -35,7 +35,7 @@ peak_share_25 = Y25['peak_entries'] / Y25['day1']                   # 28% of a d
 days_each_25 = (Y25['day1'] + Y25['day2']) / Y25['attendees']       # 1.35 days per person
 
 # ---------------- the plan's money (D) ----------------
-LIMIT = 300                                                         # D: price of the next attendee on the best channel we can always buy more of
+LIMIT = 300                                                         # D: what one more outside attendee is worth (2025 paid ₹274–337 per attendee for ads and kept buying)
 # D: fund each channel until its NEXT attendee costs ₹300. With attendees = A25 × (S / S25)^0.5 the next one costs
 # S / (0.5 × attendees), so S* = (₹300 × 0.5 × A25)² / S25: Paid Social ≈ ₹28k, Creators ≈ ₹12k, College Partnerships ≈ ₹1.08L.
 opt = lambda k: (LIMIT * 0.5 * CH25[k][1]) ** 2 / CH25[k][0]
