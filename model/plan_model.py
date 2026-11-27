@@ -9,7 +9,7 @@ How it works
 - ONE PRICE: each channel is funded up to the point where its NEXT attendee costs ₹300 (equal marginal cost).
   Nothing else clears ₹300 before there is evidence, so the rest waits as reserve.
 - The five bets add extra attendees on top, each built up from its own inputs (low / likely / high).
-- The reserve (₹5.3L) has two jobs. GROW: at a review, a proven bet gets a top-up if its next attendee costs
+- The reserve (₹2.5L) has two jobs. GROW: at a review, a proven bet gets a top-up if its next attendee costs
   ≤ ₹300 after the 80% yield. PROTECT: if the forecast is not Safe at week 10 or 12, the cheapest proven top-ups
   are released until bad luck beats the target (the dashboard does this step; the model's stretch uses GROW only).
 - 20,000 runs, every input drawn from its range (triangular). The fixed seed gives the same answer every time.
@@ -41,9 +41,11 @@ LIMIT = 300                                                         # D: price o
 opt = lambda k: (LIMIT * 0.5 * CH25[k][1]) ** 2 / CH25[k][0]
 CHANNELS = {'Paid Social': 28000, 'Creator Partners': 12000, 'College Partnerships': 110000}   # rounded from opt(); partnerships also run the competition slots
 BETS = {'Campus Outreach': 60000, 'Group Pass': 70000, 'Day Scholar Turnout': 70000, 'Volunteer Corps': 60000, 'Alumni Homecoming': 60000}
-RESERVE = 530000
-BUDGET = sum(CHANNELS.values()) + sum(BETS.values()) + RESERVE       # ₹10L
+RESERVE = 250000                                                    # D: grow at most ₹2L + room for protect (sized by the run below)
+NOT_NEEDED = 280000                                                 # D: returned on day 1: before evidence nothing buys an attendee for ≤ ₹300
+BUDGET = sum(CHANNELS.values()) + sum(BETS.values()) + RESERVE + NOT_NEEDED   # ₹10L
 CAP = {k: LIMIT for k in ('Campus Outreach', 'Group Pass', 'Day Scholar Turnout', 'Volunteer Corps', 'Alumni Homecoming')}   # D: the same price for every rupee
+BASE_T = 3800                                                       # D: the base we commit to (re-checked by the run below)
 YIELD = 0.8                                                         # A: new money does 80% as well as the test (range 50–100% below)
 SCALE = {'Campus Outreach': 0.5, 'Group Pass': 0.6, 'Day Scholar Turnout': 0.4, 'Volunteer Corps': 0.3, 'Alumni Homecoming': 0.5}   # A: how well each scales
 
@@ -73,19 +75,40 @@ def run(with_reserve):
     pass_regs = pre / 0.6875                                        # pass holders behind them, at 2025's 68.75% show-up (S)
     gp = gp_regs + pass_regs * showup_lift                          # + pass holders who now come because of confirm-or-release
     outside = (paid + organic + teams + crews + squads + gp + volunteers + alumni) / (1 - walk)
-    reserve_extra = 0
+    reserve_extra = protect_spend = protect_extra = fired = grow_spend = 0
     if with_reserve:   # the money rule at the week-7 review: a top-up only if it buys attendees under the limit; 76% of sign-ups still to come
         y = tri(0.5, 0.8, 1.0)                                      # new money does a bit worse than the test (A)
+        grow_spend = 0
         left = 0.76                                                 # S: 2025's curve has 24% of sign-ups in by week 7
         for name, final in (('Campus Outreach', crews + squads), ('Group Pass', gp), ('Volunteer Corps', volunteers), ('Alumni Homecoming', alumni)):
             P = BETS[name]
             for R in (100000, 50000):
                 extra = final * (((P + R) / P) ** SCALE[name] - 1) * left
-                if extra > 0 and R / (extra * YIELD) <= CAP[name]: reserve_extra += extra * y; break
+                if extra > 0 and R / (extra * YIELD) <= CAP[name]: reserve_extra += extra * y; grow_spend += R; break
         outside += reserve_extra
+        # PROTECT at week 10 (51% of sign-ups still to come): the team sees this run's outcome through a forecast that
+        # can be 10% off. If most likely misses the base, price ₹50k steps on Outreach, Group Pass and College Partnerships
+        # (cheapest first, ≤ ₹600 = 2× the limit, ≤ ₹1.5L each) and release them only if together they reach the base.
+        seen = outside * tri(0.9, 1.0, 1.1)
+        if seen < BASE_T:
+            opts = {'Campus Outreach': [crews + squads, BETS['Campus Outreach'], SCALE['Campus Outreach']], 'Group Pass': [gp, BETS['Group Pass'], SCALE['Group Pass']],
+                    'College Partnerships': [CH25['College Partnerships'][1] * (CHANNELS['College Partnerships'] / CH25['College Partnerships'][0]) ** b, CHANNELS['College Partnerships'], b]}
+            got = {k: 0 for k in opts}; add_seen = add_true = 0
+            while seen + add_seen < BASE_T:
+                best = None
+                for k, (fin, P0, sc) in opts.items():
+                    if got[k] + 50000 > 150000 or fin <= 0 or grow_spend + sum(got.values()) + 50000 > RESERVE: continue
+                    d = fin * (((P0 + got[k] + 50000) / P0) ** sc - ((P0 + got[k]) / P0) ** sc) * 0.51
+                    price = 50000 / (d * YIELD)
+                    if best is None or price < best[1]: best = (k, price, d)
+                if best is None or best[1] > 2 * LIMIT: break
+                got[best[0]] += 50000; add_seen += best[2] * YIELD; add_true += best[2] * y
+            fired = 1
+            if seen + add_seen >= BASE_T: protect_spend, protect_extra = sum(got.values()), add_true
+            outside += protect_extra
     host = HOSTEL * tri(0.85, 0.90, 0.95) + DAY_SCHOLARS * tri(0.55, 0.65, 0.75) + day_sch
     parts = dict(paid=paid, organic=organic, teams=teams, crews=crews, squads=squads, gp=gp, day_sch=day_sch, volunteers=volunteers,
-                 alumni=alumni, reserve=reserve_extra, outside=outside, host=host, total=outside + host)
+                 alumni=alumni, reserve=reserve_extra, grow_spend=grow_spend, protect_spend=protect_spend, protect_extra=protect_extra, fired=fired, outside=outside, host=host, total=outside + host)
     return parts
 
 
@@ -108,7 +131,7 @@ CEIL_RUSH, CEIL_WIN = ceiling(peak_share_25), ceiling(0.20)
 
 if __name__ == '__main__':
     print('2025 (S): walk-ins %.1f%%, peak hour %.0f%% of day 1, %.2f days per person, cost per attendee ₹%d' % (walkin_25 * 100, peak_share_25 * 100, days_each_25, Y25['spend'] / Y25['attendees']))
-    print('Budget ₹%d = channels ₹%d + bets ₹%d + reserve ₹%d' % (BUDGET, sum(CHANNELS.values()), sum(BETS.values()), RESERVE))
+    print('Budget ₹%d = channels ₹%d + bets ₹%d + reserve ₹%d + not needed ₹%d' % (BUDGET, sum(CHANNELS.values()), sum(BETS.values()), RESERVE, NOT_NEEDED))
     print('\nPer part, no reserve (bad / likely / good):')
     for k in ('paid', 'organic', 'teams', 'crews', 'squads', 'gp', 'day_sch', 'volunteers', 'alumni', 'outside', 'host', 'total'):
         lo, mid, hi = summ(no_res, k); print(f'  {k:11s} {lo:8.0f} {mid:8.0f} {hi:8.0f}')
@@ -133,7 +156,14 @@ if __name__ == '__main__':
         avg(no_res, 'volunteers') / 0.94, avg(no_res, 'alumni') / 0.94, avg(no_res, 'outside'), avg(with_res, 'outside')))
     base_o = r100(ob)
     print('Share of runs at or above the %d base: %.1f%% (no reserve) · %.1f%% (with reserve)' % (base_o, 100 * sum(r['outside'] >= base_o for r in no_res) / N, 100 * sum(r['outside'] >= base_o for r in with_res) / N))
-    print('Runs that release reserve: %.1f%% · most released in one run: ₹%dk' % (100 * sum(r['reserve'] > 0 for r in with_res) / N, 200))
+    gs = sorted(r['grow_spend'] for r in with_res); ps = sorted(r['protect_spend'] for r in with_res)
+    print('Grow step: releases in %.1f%% of runs, average ₹%.0fk, at most ₹%dk' % (100 * sum(g > 0 for g in gs) / N, sum(gs) / N / 1000, gs[-1] // 1000))
+    fired = sum(r['fired'] for r in with_res); paid = sum(p > 0 for p in ps)
+    print('Protect step: needed in %.1f%% of runs, released in %.1f%% (feasible), average ₹%.0fk, P90 of runs that release ₹%dk, max ₹%dk; average lift where released %.0f' % (
+        100 * fired / N, 100 * paid / N, sum(ps) / N / 1000, sorted(p for p in ps if p > 0)[int(0.9 * max(1, paid)) - 1] // 1000 if paid else 0, ps[-1] // 1000,
+        sum(r['protect_extra'] for r in with_res if r['protect_spend'] > 0) / max(1, paid)))
+    tot = sorted(r['grow_spend'] + r['protect_spend'] for r in with_res)
+    print('Reserve used (grow + protect): average ₹%.0fk, P90 ₹%dk, max ₹%dk of ₹%dk' % (sum(tot) / N / 1000, tot[int(0.9 * N)] // 1000, tot[-1] // 1000, RESERVE // 1000))
     print('Channels at plan, next attendee costs: ' + ', '.join('%s ₹%.0f (spend ₹%dk)' % (k, v / (0.5 * CH25[k][1] * (v / CH25[k][0]) ** 0.5), v // 1000) for k, v in CHANNELS.items()))
     tm = 250 * 3.5; sh = 0.6875 + 0.02
     pass_regs = (base_o * 0.94 - tm * 0.90) / sh

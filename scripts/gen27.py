@@ -68,8 +68,8 @@ PLAN = {   # the idea, why it should work, how we test it, the stop rule (plain 
     'C01': ('Short reveal and reminder ads on Instagram and YouTube.', 'Reminds people who already know us; weak at bringing new groups.', 'Week 9 holdout: some colleges see no ads.', 'Opt-outs above 15% → cut to the last two weeks of reminders.'),
     'C02': ('Delhi student creators post the line-up reveals.', 'Students trust other students more than ads.', 'Compared on cost per attendee with the other channels.', 'Cost per attendee above ₹300 → stop new creators.'),
     'C03': ('Society tie-ups, stalls at other fests, and the 300 competition team slots.', '2025\'s best channel: 86% of its registrants came, at ₹81 each.', 'Compared on cost per attendee with the other channels.', 'Cost per attendee above ₹300 → stop new tie-ups. Money from a stopped bet comes here first.'),
-    'B1': ('Ambassadors in each test college build crews of 10+ friends; every competition team gets a squad link for its supporters. Rewards are perks, paid only on verified check-ins.', 'People come with friends, and a friend asking works better than an ad (2025: person-led channels 75–86% show-up, ads 50%).', '6 colleges get ambassadors, 6 matched colleges don\'t; we compare registration rates college by college.', 'Under 200 crew captains by week 10, or no clear gap after a fair test → stop; money goes to College Partnerships.'),
-    'B2': ('One link registers 4–10 friends. Everyone confirms 48 hours before, or the pass goes to the waitlist.', 'Groups decide together and show up together; in 2025 everyone who came had confirmed.', '4 colleges see group passes, 4 matched colleges see solo passes only.', 'No clear gap after a fair test → stop; money goes to College Partnerships. Under 25% of passes in groups by week 10 → change the offer (a group food discount).'),
+    'B1': ('Ambassadors in each test college build crews of 10+ friends; every competition team gets a squad link for its supporters. Rewards are perks, paid only on verified check-ins.', 'People come with friends, and a friend asking works better than an ad (2025: person-led channels 75–86% show-up, ads 50%).', '6 colleges get ambassadors, 6 matched colleges don\'t; we compare registration rates college by college.', 'Under 200 crew captains by week 10, or no clear gap after a fair test → stop; its unspent money is not spent elsewhere.'),
+    'B2': ('One link registers 4–10 friends. Everyone confirms 48 hours before, or the pass goes to the waitlist.', 'Groups decide together and show up together; in 2025 everyone who came had confirmed.', '4 colleges see group passes, 4 matched colleges see solo passes only.', 'No clear gap after a fair test → stop; its unspent money is not spent elsewhere. Under 25% of passes in groups by week 10 → change the offer (a group food discount).'),
     'B3': ('A late shuttle to the metro and a metro-timed schedule for our students who go home daily.', 'Getting home late may be why day scholars skip evenings; a week-2 survey checks this before spending.', 'Far commuters offered the shuttle vs similar far commuters not offered (they say "I\'m coming" in the app).', 'No clear gap after a fair test → stop. Turnout itself is only counted at the student-ID lane on fest days.'),
     'B4': ('Outside students work two 4-hour shifts for a capped concert pass, meals and a certificate, and bring friends.', 'A role makes people commit; volunteers also staff the gates.', 'No comparison group: every sign-up is counted, but only the 45% assumed not to come anyway count as extra.', 'Under 300 sign-ups by week 10 → keep only our own students\' roles.'),
     'B5': ('Our alumni get a ₹299 homecoming pass, returned as food credit, and batch reunions.', 'A pool no other bet reaches; a small refundable price filters for people who will come.', 'Alumni split at random: half get the offer, half the normal mail.', 'No university approval by week 6, or under 200 on the waitlist by week 9 → don\'t launch.'),
@@ -90,7 +90,7 @@ dump('campaigns', ['campaign_name', 'channel', 'audience_type', 'objective', 'ow
 CO = {c[0]: c for c in CAMPS}
 def own(c): return CO[c][6] if c else None
 
-RESERVE = 530000
+RESERVE = 250000
 dump('event', ['event_name', 'history_start', 'history_end', 'event_starts_at', 'event_ends_at', 'timezone', 'currency', 'fictional', 'simulated', 'city', 'plan_start', 'registration_opens', 'reserve_inr', 'tranche_inr', 'today', 'gate_capacity_per_hour', 'competition_opens', 'big_push', 'hostel_students', 'day_scholars'],
      [['CampusFest 2027', START.isoformat() + 'T00:00:00', END.isoformat() + 'T00:00:00', ts(FEST1, 10, 0), ts(FEST2, 21, 30), 'Asia/Kolkata', 'INR', True, True, 'New Delhi', START.isoformat() + 'T00:00:00', LAUNCH.isoformat() + 'T00:00:00', RESERVE, 500000, TODAY.isoformat() + 'T00:00:00', 2500, COMP_OPENS.isoformat() + 'T00:00:00', PUSH.isoformat() + 'T00:00:00', 4000, 6000]])
 dump('targets', ['effective_at', 'identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'target_version', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch', 'teams_goal', 'teams_by_week6', 'teams_by_week8'],
@@ -115,9 +115,9 @@ for w in (7, 10, 12):
         PD.append([f'PD{len(PD)+1}', REVIEW1, 'B4', 'task', 0, 'Volunteer Corps: cut cost per volunteer (one tee, meals only on shift days)', 'Week 10 review: cost per extra attendee above the ₹300 limit', 'Cost per extra attendee falls', 'cost_per_extra', REVIEW2])
     if w == 12:
         PD.append([f'PD{len(PD)+1}', REVIEW2, 'B3', 'stop', 0, 'Stop Day Scholar Turnout', 'Week 12 review: fair test (300+ per group, 4 weeks) and no clear gap over the comparison group', 'No more spend on it', 'spend', REVIEW3])
-    if not any(r[0] == w for r in RELEASES) and w > 10:
+    if not any(r[0] == w for r in RELEASES) and w >= 10:
         left = RESERVE - sum(r[2] for r in RELEASES if r[0] < w)
-        PD.append([f'PD{len(PD)+1}', REVIEW[w], '', 'hold', 0, f'Hold the remaining {lakh(left)} of reserve', f"Week {w} review: no top-up buys extra attendees under the ₹300 limit, and no protect step costs under ₹900 (3× the limit)", 'Return it to the fest budget' if w == 12 else 'Re-check at the next review', 'spend', NEXT[w]])
+        PD.append([f'PD{len(PD)+1}', REVIEW[w], '', 'hold', 0, f'Hold the {lakh(left)} reserve: commitment at risk' if w == 10 else f'Hold the remaining {lakh(left)} of reserve', f"Week {w} review: no top-up buys extra attendees under the ₹300 limit, and protect steps under ₹600 (2× the limit) cannot bring the most likely outcome to the target", 'Return it to the fest budget' if w == 12 else 'Re-check at the next review', 'spend', NEXT[w]])
 dump('plan_decisions', ['decision_id', 'decided_at', 'campaign_id', 'kind', 'amount_inr', 'title', 'reason', 'expected', 'metric_key', 'review_at'],
      [[p[0], p[1].isoformat() + 'T10:00:00', p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9].isoformat() + 'T10:00:00'] for p in PD])
 REL = {}
@@ -343,7 +343,7 @@ dump('interactions', ['occurred_at', 'event_type', 'interaction_id', 'person_id'
 dump('checkins', ['occurred_at', 'result', 'verification', 'source', 'event_id', 'person_id', 'registration_id', 'campaign_id', 'owner_id'], chk)
 tasks = [
     ['TKseed01', 'Hire lead ambassadors at the 6 test colleges (perks, not cash)', 'T03', wk(1) + dt.timedelta(days=6), 'done', 'B1'],
-    ['TKseed02', 'Open competition registrations; 150 teams by week 6', 'T03', wk(6) + dt.timedelta(days=6), 'done', 'B1'],
+    ['TKseed02', 'Open competition registrations; 125 teams by week 6', 'T03', wk(6) + dt.timedelta(days=6), 'done', 'B1'],
     ['TKseed03', 'Big push: line-up reveal, Group Pass and Welcome Back cards', 'T06', PUSH, 'done', 'B2'],
     ['TKseed04', 'Crew captains: 300 signed up (week 10 milestone)', 'T03', TODAY, 'doing', 'B1'],
     ['TKseed05', 'Week 10 review: forecast, Warn/Act list, reserve decision', 'GL', REVIEW1, 'todo', None],

@@ -1,6 +1,6 @@
 [
 {"id": "TKseed01", "base": "27", "title": "Hire lead ambassadors at the 6 test colleges (perks, not cash)", "owner": "T03", "due": "2026-11-22", "status": "done", "campaign_id": "B1", "source": "plan"},
-{"id": "TKseed02", "base": "27", "title": "Open competition registrations; 150 teams by week 6", "owner": "T03", "due": "2026-12-27", "status": "done", "campaign_id": "B1", "source": "plan"},
+{"id": "TKseed02", "base": "27", "title": "Open competition registrations; 125 teams by week 6", "owner": "T03", "due": "2026-12-27", "status": "done", "campaign_id": "B1", "source": "plan"},
 {"id": "TKseed03", "base": "27", "title": "Big push: line-up reveal, Group Pass and Welcome Back cards", "owner": "T06", "due": "2027-01-04", "status": "done", "campaign_id": "B2", "source": "plan"},
 {"id": "TKseed04", "base": "27", "title": "Crew captains: 300 signed up (week 10 milestone)", "owner": "T03", "due": "2027-01-24", "status": "doing", "campaign_id": "B1", "source": "plan"},
 {"id": "TKseed05", "base": "27", "title": "Week 10 review: forecast, Warn/Act list, reserve decision", "owner": "GL", "due": "2027-01-25", "status": "todo", "campaign_id": null, "source": "plan"},
