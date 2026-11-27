@@ -10,10 +10,14 @@ async function providerOrder(gKey, qKey) {
   const g = gKey ? (await modelOrder(gKey)).map(m => ({ p: 'gemini', m })) : [];
   const q = qKey ? (await groqOrder(qKey)).map(m => ({ p: 'groq', m })) : [];
   const out = [];
-  // Gemini first, then Groq, alternating: [G1, Q1, G2, Q2, G3, ...]
-  for (let i = 0; i < Math.max(g.length, q.length); i++) { if (g[i]) out.push(g[i]); if (q[i]) out.push(q[i]); }
+  // two Gemini tries, then Groq, then alternating: [G1, G2, Q1, G3, Q2, ...]
+  const gg = g.slice(), qq = q.slice();
+  if (gg.length) out.push(gg.shift()); if (gg.length) out.push(gg.shift());
+  while (gg.length || qq.length) { if (qq.length) out.push(qq.shift()); if (gg.length) out.push(gg.shift()); }
   return out;
 }
+// models that were just busy are skipped for 3 minutes (kept while this server instance stays warm)
+const BUSY = new Map();
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: { code: 'method', message: 'POST only' } });
@@ -29,7 +33,9 @@ module.exports = async (req, res) => {
   const pick = order[idx];
   const busy = (message) => res.status(503).json({ error: { code: 'busy', message, next: idx + 1, exhausted: idx + 1 >= order.length }, model: pick && pick.m, provider: pick && pick.p });
   if (!pick) return busy('No AI model answered.');
-  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 20000);
+  if ((BUSY.get(pick.m) || 0) > Date.now() && idx + 1 < order.length) return busy(pick.m + ' was busy a moment ago; trying the next model.');
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 14000);
+  const markBusy = () => BUSY.set(pick.m, Date.now() + 180000);
   const done = content => res.status(200).json({ content, model: pick.m, provider: pick.p, modelIndex: idx });
 
   try {
@@ -39,7 +45,7 @@ module.exports = async (req, res) => {
       if (r.ok) return done(r.content);
       console.error('Groq error', r.status, pick.m, String(r.message).slice(0, 300));
       if (r.status === 400 && !/tool|function/i.test(r.message)) return res.status(400).json({ error: { code: 'upstream', message: r.message }, model: pick.m });
-      return busy('Groq: ' + r.message);
+      markBusy(); return busy('Groq: ' + r.message);
     }
     const payload = { contents: body.contents, generationConfig: { maxOutputTokens: 4096 } };
     if (body.system) payload.systemInstruction = { parts: [{ text: String(body.system).slice(0, 60000) }] };
@@ -53,12 +59,12 @@ module.exports = async (req, res) => {
     if (r.ok) { const cand = (j.candidates || [])[0] || {}; if (!cand.content && j.promptFeedback && j.promptFeedback.blockReason) return res.status(200).json({ content: null, blocked: j.promptFeedback.blockReason }); return done(cand.content || null); }
     const msg = (j.error && j.error.message) || ('Gemini error ' + r.status);
     console.error('Gemini error', r.status, pick.m, msg.slice(0, 300));
-    if ([429, 500, 503, 404].includes(r.status) || /not found|not supported|overloaded|high demand|unavailable/i.test(msg)) return busy(msg);
+    if ([429, 500, 503, 404].includes(r.status) || /not found|not supported|overloaded|high demand|unavailable/i.test(msg)) { markBusy(); return busy(msg); }
     if (qKey) return busy(msg); // let the backup try
     return res.status(r.status).json({ error: { code: 'upstream', message: msg }, model: pick.m });
   } catch (e) {
     clearTimeout(timer);
-    if (e && e.name === 'AbortError') return busy(pick.m + ' took too long to answer.');
+    if (e && e.name === 'AbortError') { markBusy(); return busy(pick.m + ' took too long to answer.'); }
     console.error('chat exception', e);
     return busy(String((e && e.message) || e));
   }
