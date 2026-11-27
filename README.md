@@ -7,7 +7,7 @@ RISA Labs Growth APM assignment · **Challenge A: Attendee Growth** · CampusFes
 - **Code:** https://github.com/AadityaDabhade/campusfest-growth-center
 - **Backup inside Claude:** https://claude.ai/artifact/KXbRrm2dBVD9GWzMAm2cST (the analyst runs on the viewer's Claude account)
 - **Slides:** `CampusFest_Growth_Strategy_Dabhade_22EX23005.pdf` (3 slides)
-- **Demo video:** `Growth_Center_demo.mp4` (2.5 min: the screens at week 10, then the analyst answering a data question, a decision, a what-if, a calculation, a follow-up, a "not in the data" question and an action with confirmation). The answers were recorded from the live site on 27 Nov 2026 and replayed against a local copy, so the video does not wait on busy free-tier models; every number and tool call runs for real.
+- **Demo video:** `Growth_Center_demo.mp4` (2.5 min: the screens at week 10, then the analyst answering a data question, a decision, a what-if, a calculation, a follow-up, a "not in the data" question and an action with confirmation). The answers were recorded from the live site on 27 Nov 2026 and replayed against a local copy, so the video does not wait on busy free-tier models; every number and tool call runs for real. It was recorded with the earlier ₹300 limit, so its week-10 numbers (3,510 most likely, ₹2.5L reserve) differ slightly from the current ₹500 version.
 
 ---
 
@@ -34,17 +34,17 @@ RISA Labs Growth APM assignment · **Challenge A: Attendee Growth** · CampusFes
 | | Outside attendees | All attendees (with our own students) |
 |---|---|---|
 | 2025 actual (provided data) | 2,050 | not recorded |
-| **Base: what we commit to** (89% of simulated runs reach it with no reserve, 94% with it) | **3,800** (1.9×) | **11,500** |
-| Most likely (middle run, reserve by the rule) | ~4,500 | ~12,350 |
-| **Stretch** (12% of runs reach it, reserve by the rule) | **5,100** (2.5×) | **13,100** |
+| **Base: what we commit to** (89% of simulated runs reach it with no reserve, 99.6% with it) | **3,800** (1.9×) | **11,500** |
+| Most likely (middle run, reserve by the rule) | ~4,900 | ~12,750 |
+| **Stretch** (14% of runs reach it, reserve by the rule) | **5,400** (2.6×) | **13,400** |
 | Gate limit if arrivals bunch like 2025 / with entry windows | – | 16,900 / 22,200 |
 
 - **City:** New Delhi. **Dates:** Fri–Sat 26–27 Feb 2027. **Campaign:** 15 weeks from Mon 16 Nov 2026.
-- **Budget:** ₹10L available = ₹1.5L channels + ₹3.2L for five bets + ₹2.5L reserve + **₹2.8L not committed** (goes back to the fest: before there is evidence, nothing buys an outside attendee for ₹300 or less).
-- **One price:** ₹300 is what one more outside attendee is worth to us (a decision). In 2025 the fest paid ₹274–337 per attendee for ads and kept buying them, so an attendee was worth at least about that. Every channel is funded until its *next* attendee costs ₹300 (equal marginal cost), so ads shrink to ₹40k and College Partnerships grows to ₹1.1L. Money that cannot buy an attendee for ₹300 is not spent.
-- **The reserve has two jobs.** *Grow:* at a review (weeks 7, 10, 12), a proven bet gets ₹50k (₹1L if the gap is High) if its next attendee costs ≤ ₹300 after the 80% yield. *Protect:* at weeks 10 and 12, if the **most likely** outcome misses the target, price ₹50k steps on every working campaign (proven bets and channels), cheapest first, up to ₹1.5L each and ₹600 per extra attendee (2× the price: keeping a public commitment is worth paying double, not any price). Release them only if together they bring most likely to the target; if they cannot, the commitment is at risk and nothing above ₹300 is spent. In the model the reserve lifts the chance of reaching the base from 89% to 94% for ₹67k on average (P90 ₹1.5L, never over ₹2.5L).
+- **Budget:** ₹10L = ₹1.5L channels + ₹3.2L for five bets + ₹5.3L reserve that only buys attendees a test has proven.
+- **One price:** ₹500 is the most we pay for one more outside attendee (a decision). In 2025 the last rupee of ads bought attendees at ₹550–670 and the fest kept buying, so ₹500 stays under what it already paid. Channels stay near the spend 2025 tested (₹1.5L, where their next attendee costs about ₹300): pushing them further rests on a guess, so the rest of the money waits for bets that prove themselves.
+- **The reserve has two jobs.** *Grow:* at a review (weeks 7, 10, 12), a proven bet gets ₹50k (₹1L if the gap is High) if its next attendee costs ≤ ₹500 after the 80% yield. *Protect:* at weeks 10 and 12, while the **most likely** outcome misses the target, take ₹50k steps on every working campaign (proven bets and channels), cheapest first, one at a time, up to ₹1.5L more each and ₹750 per extra attendee (1.5× the price). In the model the reserve lifts the chance of reaching the base from 89% to 99.6% and adds about 600 attendees; it spends ₹2.2L on average (P90 ₹2.5L, at most ₹4.5L).
 - **The verdict is on outside attendees.** They are what marketing moves and what the 2025 data can check. Our own students (4,000 hostel, 6,000 day scholars) add about 7,700, but they need no registration and 2025 has no data on them, so they sit next to the verdict, never inside it.
-- **Strategy in one line:** back people who bring people (2025: people brought by a person came 75–86% of the time; people from ads 50%), test every new idea against comparison colleges, and put more money only where the next attendee costs under ₹300, or where it protects the commitment.
+- **Strategy in one line:** back people who bring people (2025: people brought by a person came 75–86% of the time; people from ads 50%), test every new idea against comparison colleges, and put more money only where the next attendee costs ₹500 or less, or where it protects the commitment.
 
 ## 2. Research: what we learned and from where
 
@@ -99,8 +99,8 @@ Everything on slide 1 comes from `model/plan_model.py` (run `python3 model/plan_
 |---|---|---|---|
 | Channel attendees | 2025 channel attendees × (2027 spend ÷ 2025 spend)^b | S + A | 2025 cost per attendee, with diminishing returns |
 | b, how well channel spend scales | 0.4 / 0.5 / 0.7 | A | Doubling spend does not double people |
-| The ₹300 price | What one more outside attendee is worth: 2025 paid ₹274–337 per attendee for ads and kept buying | D (anchored on S) | A revealed price, not derived from our own plan |
-| 2027 channel spend | Paid Social ₹28k, Creators ₹12k, College Partnerships ₹1.1L | D | Each funded until its next attendee costs ₹300: spend = (₹300 × 0.5 × 2025 attendees)² ÷ 2025 spend |
+| The ₹500 price | The most one more outside attendee is worth to us: under 2025's ₹550–670 for the last ad attendee | D (anchored on S) | A price the fest has already paid, not derived from our own plan |
+| 2027 channel spend | Paid Social ₹28k, Creators ₹12k, College Partnerships ₹1.1L | D | Near the spend 2025 tested; their next attendee costs about ₹300 here. Beyond it the curve is a guess |
 | Unpaid search and word of mouth | 2025's 195 × 0.9 / 1.0 / 1.2 | S + A | Keeps working |
 | Competition teams that sign up for 300 slots | 150 / 250 / 300 teams × 3.0 / 3.5 / 4.0 people × 85 / 90 / 95% come | A | 2025 had no competitions, so a wide range; College Partnerships runs them (2025: 86% came) |
 | Walk-ins | 4 / 6 / 8% of attendees | S (6.1%) | |
@@ -113,7 +113,7 @@ Everything on slide 1 comes from `model/plan_model.py` (run `python3 model/plan_
 | Volunteers | 300 / 600 / 700 sign-ups × 30 / 45 / 60% who would not come anyway × 92% × (1 + 0.3 / 0.5 / 0.8 friends each) | A | No comparison group, so heavily discounted |
 | Day Scholar Turnout | 0 / 501 / 570 more of our day scholars | A | Zero if they already come |
 | Alumni Homecoming | 410 / 468 / 565, only if the university approves (60%) | A | ~3,750 alumni in NCR (A: 25 years of ~150 outside-state graduates who stay) × 18% take the offer × 69% come ≈ 466 |
-| Reserve | Grow at week 7: ₹50k or ₹1L to a bet only if R ÷ (extra × 80%) ≤ ₹300; 76% of sign-ups still to come. Protect at week 10: if the run's most likely (seen through a ±10% forecast error) misses 3,800, the ₹50k ladder on Outreach, Group Pass and College Partnerships (≤ ₹600, ≤ ₹1.5L each, 51% of sign-ups left), only if it reaches 3,800. New money delivers 50 / 80 / 100% of the test | S (curve) + A + D | Both steps are in the model |
+| Reserve | Grow at week 7: ₹50k or ₹1L to a bet only if R ÷ (extra × 80%) ≤ ₹500; 76% of sign-ups still to come. Protect at week 10: while the run's most likely (seen through a ±10% forecast error) misses 3,800, ₹50k steps on Outreach, Group Pass and College Partnerships (≤ ₹750, ≤ ₹1.5L each, 51% of sign-ups left). New money delivers 50 / 80 / 100% of the test | S (curve) + A + D | Both steps are in the model |
 
 ### 3.2 Results
 
@@ -125,16 +125,16 @@ Everything on slide 1 comes from `model/plan_model.py` (run `python3 model/plan_
 | + Volunteer Corps | +360 |
 | + Alumni Homecoming | +308 |
 | **Average without reserve** | **4,285** |
-| + Reserve (grow + protect) | +224 |
-| Average with reserve | 4,509 |
+| + Reserve (grow + protect) | +608 |
+| Average with reserve | 4,893 |
 
 | Percentile | Outside, no reserve | Outside, with reserve | All attendees, no reserve | All, with reserve |
 |---|---|---|---|---|
-| Bad luck (10th) | **3,783 → base 3,800** | 3,898 | **11,528 → 11,500** | 11,654 |
-| Most likely (50th) | 4,303 | 4,481 | 12,152 | 12,347 |
-| Good luck (90th) | 4,751 | **5,155 → stretch 5,100** | 12,744 | **13,108 → 13,100** |
+| Bad luck (10th) | **3,783 → base 3,800** | 4,291 | **11,528 → 11,500** | 12,055 |
+| Most likely (50th) | 4,303 | 4,901 | 12,152 | 12,753 |
+| Good luck (90th) | 4,751 | **5,476 → stretch 5,400** | 12,744 | **13,438 → 13,400** |
 
-89% of runs reach 3,800 without any reserve, 94% with it; 12% reach the 5,100 stretch. Grow releases money in 67% of runs (₹63k on average, at most ₹2L). Protect is needed in 9% of runs and can close the gap in 5.7% (it adds ~150 attendees there). Reserve used: ₹67k on average, ₹1.5L at P90, ₹2.5L at most, which is why the reserve is ₹2.5L and the other ₹2.8L is not committed.
+89% of runs reach 3,800 without any reserve, 99.6% with it; 14% reach the 5,400 stretch. Grow releases money in almost every run (₹2.2L on average, at most ₹3L); protect is needed in about 1% of runs. Reserve used: ₹2.2L on average, ₹2.5L at P90, ₹4.5L at most. What is not used goes back: it could not buy an attendee for ₹500 or less.
 
 ### 3.3 The funnel, from reach to attendees (outside people)
 
@@ -147,13 +147,13 @@ Everything on slide 1 comes from `model/plan_model.py` (run `python3 model/plan_
 | Walk-ins | 125 (6.1%) | ~230 | 6% of attendees |
 | **Outside attendees** | **2,050** | **3,800** | ÷ 0.94 |
 
-Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus the small show-up lift (2 points). Stretch: 5,400 pass registrations = (5,100 × 0.94 − 945) ÷ 72%, where 945 = 300 teams × 3.5 people × 90% who come (the stretch assumes every slot fills). This funnel is back-solved from the base; the model above is what sets the base.
+Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus the small show-up lift (2 points). Stretch: 5,700 pass registrations = (5,400 × 0.94 − 945) ÷ 72%, where 945 = 300 teams × 3.5 people × 90% who come (the stretch assumes every slot fills). This funnel is back-solved from the base; the model above is what sets the base.
 
 ### 3.4 Money, cost and capacity
 
-- **Cost per outside attendee:** base ₹4.0L committed to outside campaigns (₹4.7L minus the ₹70k day-scholar bet) ÷ 3,800 = ₹105 (2025: ₹134). If the whole reserve were spent too (₹7.2L): ₹189. The ₹2.8L not committed is not counted.
-- **Top-up price** (the grow step): R ÷ [extra at plan × (((P + R) ÷ P)^scale − 1) × share of sign-ups still to come × 80% yield]. At the week-7 review, if a bet tests like the plan: Group Pass ₹300 (₹50k) / ₹326 (₹1L); Campus Outreach ₹318 / ₹356. Volunteers, Day Scholars and Alumni: ₹801–1,419, so they never grow.
-- **Equal marginal cost:** at the planned budgets the next attendee costs ₹300 on Paid Social (₹28k), ₹304 on Creators (₹12k) and ₹303 on College Partnerships (₹1.1L). In 2025 ads cost ₹274–337 per attendee on average, so their next attendee at 2025 spend cost about twice that.
+- **Cost per outside attendee:** base ₹4.0L committed to outside campaigns (₹4.7L minus the ₹70k day-scholar bet) ÷ 3,800 = ₹105 (2025: ₹134). If the whole ₹10L were spent: ₹263.
+- **Top-up price** (the grow step): R ÷ [extra at plan × (((P + R) ÷ P)^scale − 1) × share of sign-ups still to come × 80% yield]. At the week-7 review, if a bet tests like the plan: Group Pass ₹300 (₹50k) / ₹326 (₹1L); Campus Outreach ₹318 / ₹356, both under ₹500. Volunteers, Day Scholars and Alumni: ₹801–1,419, so they never grow.
+- **Channels at plan:** the next attendee costs ₹300 on Paid Social (₹28k), ₹304 on Creators (₹12k) and ₹303 on College Partnerships (₹1.1L). In 2025 ads cost ₹274–337 per attendee on average, so their next attendee at 2025 spend cost about twice that.
 - **Gate limit:** 6 lanes × 420 scans an hour = 2,520 an hour. A day holds 2,520 ÷ busiest-hour share; unique people = day capacity × 2 days ÷ 1.35 days each, plus 3,600 hostel students who never queue. With 2025's 28% busiest hour: **16,900**. With entry windows (20%): **22,200**. The stretch (13,100) uses 78% of the 2025-style limit. The concert lawn holds about 8,000 at once (A), so the concert is the binding space, not the gates.
 - **What moves the base most:** day scholars' attendance (55–75%, ±600 people), competition teams (150–300 teams, ±400), whether the two group bets work (if both fail, outside falls to about 2,700), and channel diminishing returns.
 
@@ -170,8 +170,8 @@ Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus th
 | 4 | Day Scholar Turnout: late shuttle and metro-timed schedule (our own students) | Medium | ₹70k | 168 / 379 / 507 | ₹196 | 2.4 | Far commuters offered vs not |
 | 5 | Alumni Homecoming: ₹299 pass back as food credit, reunions; needs university approval | High | ₹60k | 0 / 449 / 514 | ₹207 | 0.0 | Alumni split at random |
 
-**Double down:** Campus Outreach and Group Pass, the only bets whose top-up can come in near ₹300 (if they test like the plan, Group Pass ₹300, Outreach ₹318: each must test at or above plan to grow). They also get the protect money, because they are the cheapest proven steps.
-**Rejected:** more ads and creators (2025: ₹274–337 per attendee on average, 50% came; at 2025 spend their next attendee cost over ₹500, so they shrink to ₹40k) · buses from far areas (~₹550 per extra person, assumption) · college pavilions (no signal before week 12) · deposits for everyone (a fee on a free fest kills sign-ups) · fan-voted headliner (cannot be undone).
+**Double down:** Campus Outreach and Group Pass, the only bets whose top-up comes in under ₹500 (if they test like the plan, ₹318 and ₹300 per extra attendee). They also lead the protect steps.
+**Rejected:** more ads and creators (2025: ₹274–337 per attendee on average, 50% came; at 2025 spend their next attendee cost ₹550–670, above our ₹500, so they shrink to ₹40k) · buses from far areas (~₹550 per extra person, assumption) · college pavilions (no signal before week 12) · deposits for everyone (a fee on a free fest kills sign-ups) · fan-voted headliner (cannot be undone).
 **Overlap:** crews and group passes reach the same friends, so crews count at half. Both rest on "people come in groups", so they are tested first.
 **Dependencies:** 300 team slots and prizes by week 2 (prizes come from the fest's sponsorship budget, not marketing); alumni approval by week 6 (university); vendors accept food credit by week 8.
 
@@ -181,23 +181,23 @@ Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus th
 
 1. **Too early** if under 300 people on a side, under 2 weeks of sign-ups, or under 50 sign-ups in the test group.
 2. **Stop** if the gap is not 80%+ likely to be real, or is under 2 points. Its unspent money is not spent elsewhere (nothing beats the limit that late). "Likely to be real" compares college with college (Welch t-test) when each side has 3+ colleges; otherwise person with person.
-3. **Change** (fix how it works; no more money) if its own budget ÷ extra attendees projected to the fest is above ₹300, **or** it is on course for under 60% of the extra attendees the plan counts on.
-4. **Scale** only at a money review (weeks 7, 10, 12), if a ₹50k top-up buys extra attendees at ≤ ₹300 each after the 80% yield (₹1L if that also passes and the gap is High, 90%+).
+3. **Change** (fix how it works; no more money) if its own budget ÷ extra attendees projected to the fest is above ₹500, **or** it is on course for under 60% of the extra attendees the plan counts on.
+4. **Scale** only at a money review (weeks 7, 10, 12), if a ₹50k top-up buys extra attendees at ≤ ₹500 each after the 80% yield (₹1L if that also passes and the gap is High, 90%+).
 5. Otherwise **Keep**.
 
 **The reserve, two steps:**
 - **Grow:** Scale bets get their top-up (above).
-- **Protect** (weeks 10 and 12 only): if the **most likely** outcome misses the target, build a ladder of ₹50k steps on every working campaign (proven bets marked Scale or Keep, and channels not marked Change or Stop), cheapest first, each priced the same way, at most ₹1.5L more per campaign (what one owner can put to work in new colleges or tie-ups in five weeks) and at most ₹600 per extra attendee (2× the price). **Release the ladder only if it brings most likely to the target.** If it cannot, the commitment is at risk: we say so, fix what runs behind plan, and spend nothing above ₹300. Why most likely and not bad luck: insuring against the 1-in-10 case at double the price costs more than the attendees are worth. Why not week 7: with 24% of sign-ups in, the forecast is too noisy to spend insurance on.
-- Buses (~₹550) and more ads are rejected for growth (over ₹300); they are not in the protect ladder because buses need contracts by week 6 and ads already sit at ₹300 in the plan.
-- What is left after week 12, and the money of a stopped bet, is not spent: nothing beats ₹300 that late.
+- **Protect** (weeks 10 and 12 only): while the **most likely** outcome misses the target, take ₹50k steps on every working campaign (proven bets marked Scale or Keep, and channels not marked Change or Stop), cheapest first, one at a time, each priced the same way, at most ₹1.5L more per campaign (what one owner can put to work in five weeks) and at most ₹750 per extra attendee (1.5× the price). Each step stands on its own: unspent money buys no attendees. Why not week 7: with 24% of sign-ups in, the forecast is too noisy to spend insurance on.
+- Buses (~₹550) and more ads are rejected for growth (over ₹500); buses are not in the protect steps because they need contracts by week 6.
+- What is left after week 12, and the money of a stopped bet, goes back: nothing buys an attendee for ₹500 that late.
 
 **Why the first review is week 7:** money added late can only move sign-ups still to come. By 2025's curve 76% of sign-ups are still ahead at week 7, 51% at week 10 and about 30% at week 12. Campus Outreach and Group Pass can be read at week 7; Volunteers, Alumni and Day Scholars start later (weeks 6 and 9) and are read at weeks 10 and 12.
 
 | Bet | Early signal (by when) | Scale | Change | Stop |
 |---|---|---|---|---|
-| Campus Outreach | Sign-up gap vs comparison colleges (wk 7); crew captains (wk 10) | Top-up ≤ ₹300 each | Over ₹300 or under 60% of plan → cut merch, focus on top colleges | No real gap, or under 200 captains by wk 10 |
-| Group Pass | Sign-up gap (wk 7); share of passes in groups (wk 10) | Top-up ≤ ₹300 each | Under 60% of plan, or under 25% in groups → group food discount | No real gap after a fair test |
-| Volunteer Corps | Sign-ups and deposits (wk 10) | Never | Over ₹300 or under 60% of plan → one tee, meals on shift days only | Under 300 sign-ups by wk 10 |
+| Campus Outreach | Sign-up gap vs comparison colleges (wk 7); crew captains (wk 10) | Top-up ≤ ₹500 each | Over ₹500 or under 60% of plan → cut merch, focus on top colleges | No real gap, or under 200 captains by wk 10 |
+| Group Pass | Sign-up gap (wk 7); share of passes in groups (wk 10) | Top-up ≤ ₹500 each | Under 60% of plan, or under 25% in groups → group food discount | No real gap after a fair test |
+| Volunteer Corps | Sign-ups and deposits (wk 10) | Never | Over ₹500 or under 60% of plan → one tee, meals on shift days only | Under 300 sign-ups by wk 10 |
 | Day Scholar Turnout | Survey (wk 2); "I'm coming" gap (wk 10) | Never | Under 10% cite late travel → drop the bus | No real gap after a fair test |
 | Alumni Homecoming | Approval (wk 6); waitlist (wk 9); sign-up gap (wk 10) | Never | Under 60% of plan → reunions by batch with a named host | No approval, or under 200 waitlisted |
 
@@ -221,14 +221,13 @@ Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus th
 `scripts/settle27.js` makes the plan's releases follow the money rule at each review.
 
 **How the rehearsal goes:**
-- **Week 7:** Off track (most likely 3,020). No grow step: Campus Outreach's ₹50k top-up costs ₹361 per extra attendee, Group Pass's ₹451. Protect does not act before week 10.
-- **Week 10 (today):** Off track (bad luck 3,260, most likely 3,510, good luck 3,790 vs 3,800).
-  - Protect prices the ladder: the only step under ₹600 is ₹50k to Campus Outreach (₹484); it would lift most likely to 3,600, not 3,800. So the commitment is flagged **at risk** and no money above ₹300 is spent.
+- **Week 7:** Off track (most likely 3,050). Grow: ₹1L to Campus Outreach (₹403 per extra attendee) and ₹1L to Group Pass (₹490), both under ₹500.
+- **Week 10 (today):** just under target (3,440 / 3,730 / 4,090 vs 3,800). Protect looks: the cheapest next step now costs over ₹1,000 per extra attendee (above the ₹750 ceiling), so no money moves.
   - Instead: Paid Social is cut (opt-outs above 15%); Volunteer Corps must cut costs (₹522 per extra attendee); Alumni must fix its offer (on course for 245 of 450).
-- **Week 12:** Day Scholar Turnout stopped (no real gap); its unspent money is not spent elsewhere. Forecast 3,460 / 3,650 / 3,860, still Off track, and the ladder still cannot close the gap: the ₹2.5L reserve is held.
-- **Result:** **3,756 outside attendees**, 44 (1%) under the 3,800 base and inside the week-10 range (3,260–3,790); 7,200 of our own students; ₹4.2L spent; the ₹2.5L reserve and the ₹2.8L not committed go back.
-  - That is what a base built on the bad-luck case means: with the bets at 70% of plan, the fest still lands within 1% of it.
-  - In hindsight one ₹50k step (₹484 each) would have closed the 44 gap. The rule did not take it because it is all-or-nothing: the week-10 forecast (7% low, as sign-ups came late) said the ladder could not reach the target. That is a real weakness: when the bets run behind, protect steps get dearer exactly when they are needed, and an all-or-nothing gate can leave cheap help unused. A better version would decide on the *chance* of reaching the target (one ₹484 step lifted it from about 9% to 19%) and add levers that do not depend on the bets (show-up reminders, waitlist release). We leave the simpler rule in place and say so.
+- **Week 12:** Day Scholar Turnout stopped (no real gap). "Ahead, not safe yet"; still no step under ₹750, so ₹3.3L of reserve is held.
+- **Result:** **4,030 outside attendees**, 6% above the 3,800 base (stretch 5,400 missed), inside the week-10 range; 7,200 of our own students; ₹6.2L spent; ₹3.8L goes back.
+  - The week-7 money bought 283 extra attendees: Campus Outreach +158 (₹633 each), Group Pass +125 (₹800 each). Both above the ₹500 promise: new colleges did worse than the test colleges, which the dashboard flags. Without that money the fest would have ended near 3,750, just under base.
+  - Lesson: the 80% yield we assumed was too kind for these bets; a lower yield (the Data page can change it) would have priced the top-ups at ₹600+ and kept the money.
 
 ## 7. The Growth Center: a five-minute tour
 
@@ -237,7 +236,7 @@ Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus th
 | **Overview** | The verdict on outside attendees (bad luck / most likely / good luck), all attendees with our students next to it, registrations (pass holders + team members) vs plan, spend; a "Watch now" line; the scorecard (target vs actual for every funnel step); the campaign table; this week in three lines |
 | **Journey** | The 15-week plan, the three checkpoints (week 10 review, fest eve check, result), the forecast over time, what has been decided |
 | **Funnel** | Responded → registered → confirmed → attended, with % of the step before, cost each, targets and 2025 at the same point |
-| **Campaigns** | Spend, registrations, expected attendees by the fest, cost per attendee vs ₹300, verdict. Click to edit owner, budget or status |
+| **Campaigns** | Spend, registrations, expected attendees by the fest, cost per attendee vs ₹500, verdict. Click to edit owner, budget or status |
 | **Bets** | Test vs comparison, how sure, extra attendees (projected to the fest), cost per extra, ₹50k top-up cost vs limit, decision; the reserve release with its effect on the forecast |
 | **Insights** | Working / not working / watch, each with one reason and its number; "Act on this" drafts the action |
 | **Money** | Budget today, money in vs people out, who got the reserve and why |
@@ -246,9 +245,9 @@ Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus th
 
 **Insight → action workflow to try (2027, week 10):**
 1. Overview: "Off track", most likely 3,510 vs 3,800. Watch now says why: pass sign-ups behind plan and two bets behind theirs.
-2. Journey → week 10 review card: protect cannot close the gap under ₹600 (commitment at risk, nothing released); cut Paid Social (opt-outs); fix Volunteer Corps (over ₹300) and Alumni (behind plan).
+2. Journey → week 10 review card: just under target, but no step costs under ₹750, so no money moves; cut Paid Social (opt-outs); fix Volunteer Corps (over ₹500) and Alumni (behind plan).
 3. Ask the analyst *"Should we release reserve money now?"* or *"What happens if we release ₹1L to Group Pass?"*. It answers with the price per extra attendee and the forecast effect, and follows the rule.
-4. Data → **Change the constraints**: set the limit to ₹500 and watch Campus Outreach and Group Pass turn to Scale on the Bets page; the analyst uses the new limit too.
+4. Data → **Change the constraints**: set the limit to ₹700 and watch the protect step start buying attendees at week 10; the analyst uses the new limit too.
 5. Ask it to *"Pause Volunteer Corps"*: it opens the confirm panel. On confirm, the status changes, the forecast moves, a task goes to the owner, and the decision is logged with a review date. A release against the rule needs a written reason.
 6. Change a campaign's budget or status yourself (Campaigns → click a row): the forecast and every screen update at once.
 
@@ -269,7 +268,7 @@ Pass holders keep 2025's rates (80% of responders register, 68.75% come) plus th
 - **Extra attendees (bets)** = people in test colleges × (test sign-up rate − comparison rate) × chance each comes. **Projected to the fest** = today's ÷ share of the bet's sign-up window passed.
 - **Cost per extra** = the bet's own budget ÷ extra attendees projected to the fest (reserve money and the colleges it funded are judged apart).
 - **Top-up price** = R ÷ [projected × (((P + R) ÷ P)^scale − 1) × share of sign-ups still to come × 80% yield].
-- **Protect step:** the cheapest next ₹50k step among working campaigns (proven bets and channels), priced the same way, repeated while most likely < target, the step costs ≤ ₹600 and the campaign has had ≤ ₹1.5L more; released only if the ladder reaches the target.
+- **Protect step:** the cheapest next ₹50k step among working campaigns (proven bets and channels), priced the same way, taken one at a time while most likely < target, the step costs ≤ ₹750 and the campaign has had ≤ ₹1.5L more.
 - **Your decisions** (releases, budget changes, pauses) are dated and change the forecast from that date by the same top-up maths, until the data catches up.
 
 ## 9. The AI Growth Analyst
@@ -312,7 +311,7 @@ Local: `npx vercel dev`. Regenerate the 2027 data: `node scripts/settle27.js`. P
 - **2027 numbers are simulated.** They show the plan and the system working, not real results. The rehearsal is one run; a different run would give different numbers.
 - **Our own students (~7,700) are an assumption.** 2025 has no data on them; a week-2 survey is the first check. That is why the verdict is on outside attendees.
 - **Bet effects are planning estimates** until the tests read out; the ranges are our assumptions, listed in section 3.1.
-- **The ₹300 price and the ₹600 protect ceiling are judgments.** ₹300 sits at 2025's *average* cost of an ad attendee; 2025's *next* ad attendee cost about ₹550–670, so ₹300 is the cautious end. A higher limit buys more people (in the model, most likely rises to about 4,800 at ₹400 and 4,950 at ₹550, with more of the budget spent). The limit is a dial, not a fact: change it on the Data page and every screen and the analyst follow.
+- **The ₹500 price and the ₹750 protect ceiling are judgments.** ₹500 sits under what 2025 paid for its last ad attendees (₹550–670). At ₹300 the plan held back most of the reserve and the rehearsal missed the base by 44; at ₹500 it reaches it, but the week-7 top-ups came in at ₹633–800, above the promise. The limit is a dial, not a fact: change it on the Data page and every screen and the analyst follow.
 - **Tests compare a few colleges.** With 6 vs 6 or 4 vs 4 colleges, real differences between colleges can remain. The college-level test is conservative, but five bets across three reviews still risk a false positive.
 - **Signals not in the data:** crew captains, share of passes in groups, survey answers and deposits are in the plan but not tracked in the simulated tables.
 - **Saving:** on the hosted site, edits and tasks are saved in the reviewer's browser (they survive a reload but are not shared). The Claude version shares them between signed-in viewers.
