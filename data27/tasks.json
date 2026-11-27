@@ -3,7 +3,7 @@
 {"id": "TKseed02", "base": "27", "title": "Open competition registrations; 150 teams by week 6", "owner": "T03", "due": "2026-12-27", "status": "done", "campaign_id": "B1", "source": "plan"},
 {"id": "TKseed03", "base": "27", "title": "Big push: line-up reveal, Group Pass and Welcome Back cards", "owner": "T06", "due": "2027-01-04", "status": "done", "campaign_id": "B2", "source": "plan"},
 {"id": "TKseed04", "base": "27", "title": "Crew captains: 300 signed up (week 10 milestone)", "owner": "T03", "due": "2027-01-24", "status": "doing", "campaign_id": "B1", "source": "plan"},
-{"id": "TKseed05", "base": "27", "title": "Week 10 review: forecast, Warn/Act list, first reserve release", "owner": "GL", "due": "2027-01-25", "status": "todo", "campaign_id": null, "source": "plan"},
+{"id": "TKseed05", "base": "27", "title": "Week 10 review: forecast, Warn/Act list, reserve decision", "owner": "GL", "due": "2027-01-25", "status": "todo", "campaign_id": null, "source": "plan"},
 {"id": "TKseed06", "base": "27", "title": "Read the week-9 paid holdout: do ads bring friend groups?", "owner": "T04", "due": "2027-01-27", "status": "todo", "campaign_id": "C01", "source": "plan"},
 {"id": "TKseed07", "base": "27", "title": "Arrival design: 60% of pass holders have an entry window (week 12)", "owner": "SEC", "due": "2027-02-07", "status": "todo", "campaign_id": null, "source": "plan"},
 {"id": "TKseed08", "base": "27", "title": "Fest eve check: gates, waitlist release, volunteer shifts", "owner": "GL", "due": "2027-02-25", "status": "todo", "campaign_id": null, "source": "plan"}

@@ -12,7 +12,7 @@ for (let round = 0; round < 8; round++) {
   // the earliest review whose suggestion differs from the plan decides the next plan
   let next = null;
   for (const w of [7, 10, 12]) {
-    const want = E.reservePlan(ds, REV[w]).suggestions.map(s => [w, s.campaign_id, s.amount]);
+    const want = E.reservePlan(ds, REV[w]).suggestions.map(s => [w, s.campaign_id, s.amount, s.kind]);
     const have = plan.filter(p => p[0] === w);
     if (JSON.stringify(want) !== JSON.stringify(have)) { next = plan.filter(p => p[0] < w).concat(want); break; }
   }

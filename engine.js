@@ -20,7 +20,7 @@
     plan_decisions: ['decision_id', 'decided_at', 'kind']
   };
   const TIME_FIELDS = { event: ['history_start', 'history_end', 'event_starts_at', 'event_ends_at', 'plan_start', 'registration_opens', 'today', 'competition_opens', 'big_push'], plan_decisions: ['decided_at', 'review_at'], targets: ['effective_at'], campaigns: ['created_at', 'planned_start_at', 'planned_end_at'], daily: ['activity_date'], people: ['first_seen_at'], interactions: ['occurred_at'], registrations: ['registered_at'], reg_history: ['effective_at'], checkins: ['occurred_at'] };
-  const NUM_FIELDS = { pace_curve: ['week', 'share'], plan_decisions: ['amount_inr'], event: ['reserve_inr', 'tranche_inr', 'gate_capacity_per_hour', 'hostel_students', 'day_scholars'], targets: ['identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch', 'teams_goal', 'teams_by_week6', 'teams_by_week8'], daily: ['impressions', 'clicks', 'reported_reach', 'landing_page_sessions', 'registration_starts', 'marketing_spend_inr'], campaigns: ['planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'bet_rank', 'reserve_released_inr'] };
+  const NUM_FIELDS = { pace_curve: ['week', 'share'], plan_decisions: ['amount_inr'], event: ['reserve_inr', 'tranche_inr', 'gate_capacity_per_hour', 'hostel_students', 'day_scholars'], targets: ['identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch', 'teams_goal', 'teams_by_week6', 'teams_by_week8'], daily: ['impressions', 'clicks', 'reported_reach', 'landing_page_sessions', 'registration_starts', 'marketing_spend_inr'], campaigns: ['planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'bet_rank', 'reserve_released_inr', 'plan_extra_attendees'] };
   const ACTIVE = ['confirmed', 'interested', 'waitlisted'];
   const DEFAULT_OWNERS = { T03: 'Meera Iyer', T04: 'Arjun Verma', T05: 'Nisha Rao', T06: 'Dev Malhotra' };
 
@@ -250,7 +250,7 @@
     scale_factor: { value: 0.5, low: 0.4, high: 0.7, label: 'How well extra spend scales (1 = no diminishing returns)', tag: 'A', evidence: 'Planning value; checked at each review' },
     volunteer_new: { value: 0.45, low: 0.3, high: 0.6, label: 'Volunteers who would not have come otherwise', tag: 'A', evidence: 'Plan assumption (about 55% of volunteers would have come anyway); there is no comparison group' },
     release_yield: { value: 0.8, low: 0.5, high: 1.0, label: 'How much of a bet\'s estimated gain new money delivers', tag: 'A', evidence: 'Scaled bets usually do a bit worse than their test' },
-    cost_cap: { value: 250, low: 200, high: 300, label: 'Cost cap per extra attendee (₹)', tag: 'A', evidence: 'Plan cap' },
+    cost_cap: { value: 300, low: 250, high: 350, label: 'Limit per extra attendee (₹)', tag: 'D', evidence: 'The price of the next attendee on College Partnerships at its planned budget (the channel we can always buy more of)' },
     gate_capacity: { value: 500, low: 400, high: 600, label: 'Safe gate arrivals per hour', tag: 'A', evidence: '2025 venue; 2027 plan uses 6 lanes ≈ 2,500/hr' }
   };
   function A(assump, k, which) { const a = (assump && assump[k]) || DEFAULT_ASSUMPTIONS[k]; return a[which || 'value']; }
@@ -625,8 +625,9 @@
     const win = windowShare(ds, D, c), rem = win === null ? 1 : Math.max(0, 1 - win);
     if (!(rem > 0)) return { campaign_id: id, campaign: c.campaign_name, amount, attendees: 0, cost_each: null, planned: P0, basis: 'Registrations have closed: money can no longer change attendance' };
     if (!(final > 0)) return { campaign_id: id, campaign: c.campaign_name, amount, attendees: 0, cost_each: null, planned: P0, basis: 'No measured effect yet, so no attendees are counted' };
-    const P1 = Math.max(spent, P0 + amount), extra = final * (Math.pow(P1 / P0, b) - 1) * rem;
-    return { campaign_id: id, campaign: c.campaign_name, amount: P1 - P0, attendees: Math.round(extra), cost_each: extra ? round(Math.abs((P1 - P0) / extra), 0) : null, planned: P0, projected_at_plan: Math.round(final), scale_factor: b,
+    const P1 = Math.max(spent, P0 + amount), extra = final * (Math.pow(P1 / P0, b) - 1) * rem, y = amount > 0 ? A(assump, 'release_yield') : 1;
+    // new money does a bit worse than the test (release_yield), so a top-up's price counts only that share; a cut loses the full amount
+    return { campaign_id: id, campaign: c.campaign_name, amount: P1 - P0, attendees: Math.round(extra), attendees_likely: Math.round(extra * y), cost_each: extra ? round(Math.abs((P1 - P0) / (extra * y)), 0) : null, yield: y, planned: P0, projected_at_plan: Math.round(final), scale_factor: b,
       window_left: round(rem, 3), basis: (bet ? 'Extra attendees this bet is on course for' : 'Attendees this campaign is on course for') + ' at its planned ' + rs(P0) + ' (' + nf(final) + ') × ((' + rs(P1) + ' ÷ ' + rs(P0) + ')^' + b + ' − 1) × ' + Math.round(rem * 100) + '% of sign-ups still to come' };
   }
   function userEffects(ds, D, assump) {
@@ -714,15 +715,18 @@
       const win = windowShare(ds, D, Object.assign({}, c, { planned_start_at: startDay })) || 1, eve = D >= addDays(ds.event.eventStartDay, -1);
       const P = eve ? sp : Math.max(cs.planned || 0, sp), finalExtra = extra > 0 ? extra / win + (scaledExtra > 0 ? scaledExtra / win : 0) : 0, finalLow = extraLow > 0 ? extraLow / win : null;
       const avg = finalExtra > 0 && P > 0 ? P / finalExtra : null, avgLow = finalLow > 0 && P > 0 ? P / finalLow : null;
+      // the verdict judges the bet on its own money and its own test; reserve money and the colleges it funded are judged apart (funded_colleges)
+      const coreP = Math.max(1, P - (cs.released || 0)), coreExtra = extra > 0 ? extra / win : 0, avgCore = cs.released > 0 ? (coreExtra > 0 ? coreP / coreExtra : null) : avg;
       // money added now can only move the sign-ups still to come: the share of the window left (1 − share passed)
-      const rem = eve ? 0 : Math.max(0, 1 - (win || 0)), tranche = R => finalExtra > 0 && P > 0 && rem > 0 ? R / (finalExtra * (Math.pow((P + R) / P, scale) - 1) * rem) : null, t50 = tranche(50000), t100 = tranche(100000), next = t50;
-      const evidenceOk = hasComp ? evidence.length === 0 : fair;
+      const rem = eve ? 0 : Math.max(0, 1 - (win || 0)), yl = A(assump, 'release_yield'), tranche = R => finalExtra > 0 && P > 0 && rem > 0 ? R / (finalExtra * (Math.pow((P + R) / P, scale) - 1) * rem * yl) : null, t50 = tranche(50000), t100 = tranche(100000), next = t50;
+      const evidenceOk = hasComp ? evidence.length === 0 : fair, behind = c.plan_extra_attendees > 0 && finalExtra > 0 && finalExtra < 0.6 * c.plan_extra_attendees;
       let decision, why;
       if (cs.status === 'stopped') { decision = 'Stopped'; why = 'Stopped at a review' + (cs.decisions.length ? ' (' + cs.decisions[cs.decisions.length - 1].reason + ')' : ''); }
       else if (!fair) { decision = 'Too early'; why = 'Not a fair test yet: ' + evidence.join('; '); }
       else if (hasComp && !evidenceOk) { decision = 'Stop'; why = 'Fair test, but no clear gap over the comparison group (' + evidence.join('; ') + ')'; }
       else if (!(extra > 0)) { decision = 'Stop'; why = 'No lift over the comparison group'; }
-      else if (avg > cap) { decision = 'Change'; why = 'Each extra attendee costs ' + rs(avg) + ', above its ' + rs(cap) + ' limit'; }
+      else if (avgCore > cap) { decision = 'Change'; why = 'Each extra attendee costs ' + rs(avgCore) + (cs.released > 0 ? ' on its own budget' : '') + ', above its ' + rs(cap) + ' limit'; }
+      else if (behind) { decision = 'Change'; why = 'On course for ' + nf(finalExtra) + ' extra attendees, under 60% of the ' + nf(c.plan_extra_attendees) + ' the plan counts on: fix how it works before it gets more money'; }
       else if (next <= cap && (avgLow === null || avgLow <= cap) && !eve) { decision = 'Scale'; why = 'A ₹50k top-up would buy extra attendees at about ' + rs(t50) + ' each' + (t100 ? ' (₹1L: ' + rs(t100) + ')' : '') + ', under its ' + rs(cap) + ' limit'; }
       else { decision = 'Keep'; why = 'Works at ' + rs(avg) + ' per extra attendee' + (eve ? '' : ', but a ₹50k top-up would cost about ' + rs(next) + ' each, above its ' + rs(cap) + ' limit: no reserve money'); }
       return {
@@ -731,26 +735,48 @@
         test_people: hasComp ? a.test.n : a.direct.n, test_registered: hasComp ? a.test.reg : a.direct.reg, comparison_people: hasComp ? a.comparison.n : null, comparison_registered: hasComp ? a.comparison.reg : null,
         test_rate: round(rt, 4), comparison_rate: round(rc, 4), lift: round(lift, 4), sure_lift_above_zero: round(sure, 3), gap_real: sure === null ? null : sure >= 0.9 ? 'High' : sure >= 0.8 ? 'Medium' : 'Low', compared_by: unit,
         extra_registrations: Math.round(extraRegs), attendees_per_registrant: round(perReg, 3), expected_extra_attendees: Math.round(extra), expected_extra_low: extraLow !== null ? Math.round(extraLow) : null, expected_extra_high: extraHigh !== null ? Math.round(extraHigh) : null,
-        cost_per_extra: round(avg, 0), cost_per_extra_low_end: round(avgLow, 0), scale_factor: scale, next_tranche_cost: round(next, 0), tranche_cost_50k: round(t50, 0), tranche_cost_1l: round(t100, 0), cost_cap_inr: cap,
-        projected_extra_at_plan: Math.round(finalExtra), window_share: round(win, 3), window_left: round(rem, 3), planned_for_cost: P, funded_colleges: scaledInfo,
+        cost_per_extra: round(avg, 0), cost_per_extra_own_budget: round(avgCore, 0), cost_per_extra_low_end: round(avgLow, 0), scale_factor: scale, next_tranche_cost: round(next, 0), tranche_cost_50k: round(t50, 0), tranche_cost_1l: round(t100, 0), cost_cap_inr: cap,
+        projected_extra_at_plan: Math.round(finalExtra), plan_extra_attendees: c.plan_extra_attendees || null, share_of_plan: c.plan_extra_attendees > 0 ? round(finalExtra / c.plan_extra_attendees, 2) : null, behind_plan: !!behind, window_share: round(win, 3), window_left: round(rem, 3), planned_for_cost: P, funded_colleges: scaledInfo,
         evidence_ok: evidenceOk, evidence_gaps: evidence, decision, why,
-        basis: 'Extra registrations = test people × (test rate − comparison rate). Expected extra attendees = extra registrations × show-up by status (A). Before the fest, cost per extra = planned budget ÷ extra attendees projected to the fest (today\'s ÷ share of the sign-up window passed). Top-up cost = R ÷ (projected × ((P+R)/P)^scale − projected).'
+        basis: 'Extra registrations = test people × (test rate − comparison rate). Expected extra attendees = extra registrations × show-up by status (A). Before the fest, cost per extra = planned budget ÷ extra attendees projected to the fest (today\'s ÷ share of the sign-up window passed). Top-up cost = R ÷ [projected × (((P+R)/P)^scale − 1) × share of sign-ups still to come × 80% yield].'
       };
     }).sort((x, y) => (x.rank || 99) - (y.rank || 99));
   }
   function reserveReleased(ds, D) { let t = 0; ds.camps.forEach((c, id) => { t += campState(ds, id, D).released; }); return t; }
   function reserveLeft(ds, D) { return (ds.event.reserve || 0) - reserveReleased(ds, D || ds.event.end); }
   function reservePlan(ds, D, assump) {
-    const all = betRows(ds, D, assump), rows = all.filter(r => r.decision === 'Scale').sort((a, b) => a.next_tranche_cost - b.next_tranche_cost);
-    let left = reserveLeft(ds, D); const out = [];
-    rows.forEach(r => {
-      if (left <= 0 || (r.last_release && daysBetween(r.last_release, D) < 13)) return;
-      const high = r.sure_lift_above_zero !== null && r.sure_lift_above_zero >= 0.9, size = high && r.tranche_cost_1l !== null && r.tranche_cost_1l <= r.cost_cap_inr ? 100000 : 50000;
-      if (size === 50000 && left < 50000) return; const amt = Math.min(size, left); left -= amt;
-      out.push({ campaign_id: r.campaign_id, bet: r.bet, amount: amt, next_tranche_cost: size > 50000 ? r.tranche_cost_1l : r.tranche_cost_50k, cap: r.cost_cap_inr, sure: r.sure_lift_above_zero, gap_real: r.gap_real, rule: size > 50000 ? '₹1L: gap High and ₹1L buys attendees at ' + rs(r.tranche_cost_1l) + ' each, under the ' + rs(r.cost_cap_inr) + ' limit' : '₹50k: ₹50k buys attendees at ' + rs(r.tranche_cost_50k) + ' each, under the limit' + (high ? ' (₹1L would cost ' + rs(r.tranche_cost_1l) + ' each)' : '; gap Medium') });
+    const key = 'rp|' + D + '|' + (assump ? JSON.stringify(assump) : ''); if (ds._cache.has(key)) return ds._cache.get(key);
+    const all = betRows(ds, D, assump), y = A(assump, 'release_yield'), recent = r => r.last_release && daysBetween(r.last_release, D) < 13;
+    let left = reserveLeft(ds, D); const amt = {}, why = {}, price = {};
+    // 1. GROW: a proven bet whose next attendee costs no more than the limit gets a top-up
+    all.filter(r => r.decision === 'Scale' && !recent(r)).sort((a, b) => a.next_tranche_cost - b.next_tranche_cost).forEach(r => {
+      if (left < 50000) return;
+      const high = r.sure_lift_above_zero !== null && r.sure_lift_above_zero >= 0.9, size = high && r.tranche_cost_1l !== null && r.tranche_cost_1l <= r.cost_cap_inr && left >= 100000 ? 100000 : 50000;
+      amt[r.campaign_id] = size; left -= size; price[r.campaign_id] = size > 50000 ? r.tranche_cost_1l : r.tranche_cost_50k;
+      why[r.campaign_id] = 'Grow: ' + (size > 50000 ? '₹1L (gap High) buys attendees at ' + rs(r.tranche_cost_1l) : '₹50k buys attendees at ' + rs(r.tranche_cost_50k)) + ' each, under the ' + rs(r.cost_cap_inr) + ' limit';
     });
+    // 2. PROTECT (from week 10): if bad luck would still miss the target, release the cheapest proven ₹50k steps until it does not
+    const t = targetAt(ds, D) || {}, goal = t.unique_external_visitors_goal, dl = daysBetween(D, ds.event.eventStartDay);
+    let protect = null;
+    if (goal && dl > 1 && dl <= 35) {
+      const ext = () => Object.keys(amt).map(id => { const fx = trancheEffect(ds, D, id, amt[id], assump); return { amount: amt[id], attendees: fx ? fx.attendees : 0 }; });
+      let f = forecast(ds, D, assump, { extra: ext() }); const before = f.bad, steps = [];
+      const cands = all.filter(r => (r.decision === 'Scale' || r.decision === 'Keep') && r.projected_extra_at_plan > 0 && !recent(r));
+      const ceiling = 3 * A(assump, 'cost_cap');   // D: we pay up to 3× the normal price to keep the commitment; above that a miss costs less than the money
+      while (f.bad < goal && left >= 50000 && steps.length < 10) {
+        let best = null;
+        cands.forEach(r => { const have = amt[r.campaign_id] || 0, a = trancheEffect(ds, D, r.campaign_id, have + 50000, assump), b = have ? trancheEffect(ds, D, r.campaign_id, have, assump) : null, add = (a ? a.attendees : 0) - (b ? b.attendees : 0); if (add > 0) { const p = 50000 / (add * y); if (!best || p < best.p) best = { r, p }; } });
+        if (!best || best.p > ceiling) break;
+        const id = best.r.campaign_id; amt[id] = (amt[id] || 0) + 50000; left -= 50000; steps.push({ campaign_id: id, bet: best.r.bet, price: Math.round(best.p) });
+        f = forecast(ds, D, assump, { extra: ext() });
+      }
+      if (before < goal) protect = { target: goal, bad_before: before, bad_after: f.bad, likely_after: f.likely, met: f.bad >= goal, steps, spend: steps.length * 50000, price_ceiling: ceiling };
+      steps.forEach(s => { why[s.campaign_id] = (why[s.campaign_id] ? why[s.campaign_id] + '; then ' : '') + 'Protect: bad luck ' + nf(before) + ' is under the ' + nf(goal) + ' target, and this is the cheapest proven step (₹50k at ' + rs(s.price) + ' each)'; price[s.campaign_id] = Math.max(price[s.campaign_id] || 0, s.price); });
+    }
+    const out = Object.keys(amt).map(id => { const r = all.find(x => x.campaign_id === id); return { campaign_id: id, bet: r.bet, amount: amt[id], next_tranche_cost: price[id], cap: r.cost_cap_inr, sure: r.sure_lift_above_zero, gap_real: r.gap_real, kind: /^Protect/.test(why[id]) ? 'protect' : 'grow', rule: why[id] }; }).sort((a, b) => b.amount - a.amount);
     const released = []; ds.camps.forEach((c, id) => { const st = campState(ds, id, D); if (st.released) released.push({ campaign_id: id, bet: c.campaign_name, amount: st.released, last: st.lastRelease }); });
-    return { reserve_total: ds.event.reserve || 0, reserve_left: reserveLeft(ds, D), suggestions: out, already_released: released, rule: 'Money goes to the bet whose next extra attendee is cheapest, only under its cap. ₹1L needs a High gap, ₹50k a Medium one. One release per bet until its review two weeks later.' };
+    const res = { reserve_total: ds.event.reserve || 0, reserve_left: reserveLeft(ds, D), suggestions: out, protect, already_released: released, rule: 'Two steps. Grow: a proven bet (Scale) gets ₹50k, or ₹1L with a High gap, if its next attendee costs no more than the limit after the 80% yield. Protect (from week 10): if bad luck still misses the target, release the cheapest ₹50k steps on proven bets (Scale or Keep) until it does not, as long as a step costs no more than 3× the limit. One release per bet per review.' };
+    ds._cache.set(key, res); return res;
   }
 
   /* ---------- flags: Watch / Warn / Act rules (thresholds editable) ---------- */
@@ -812,12 +838,12 @@
     const cap = A(assump, 'cost_cap');
     if (!ended) betRows(ds, D, assump).forEach(b => {
       const lv = { Stop: 'act', Change: 'warn', 'Too early': 'watch' }[b.decision]; if (!lv || (ds.event.regOpens && D < ds.event.regOpens)) return;
-      const reason = b.decision === 'Too early' ? b.evidence_gaps[0] : b.decision === 'Stop' ? 'no clear gap over the comparison group' : rs(b.cost_per_extra) + ' per extra attendee; limit ' + rs(b.cost_cap_inr);
-      add({ id: 'bet-' + b.campaign_id, term: 'Bet', level: lv, title: b.bet + ': ' + (b.decision === 'Too early' ? 'too early to judge' : b.decision === 'Stop' ? 'not working' : 'costs too much'), reason, value: b.cost_per_extra,
+      const reason = b.decision === 'Too early' ? b.evidence_gaps[0] : b.decision === 'Stop' ? 'no clear gap over the comparison group' : b.behind_plan ? 'on course for ' + nf(b.projected_extra_at_plan) + ' extra attendees vs ' + nf(b.plan_extra_attendees) + ' in the plan (' + Math.round(b.share_of_plan * 100) + '%)' : rs(b.cost_per_extra_own_budget || b.cost_per_extra) + ' per extra attendee; limit ' + rs(b.cost_cap_inr);
+      add({ id: 'bet-' + b.campaign_id, term: 'Bet', level: lv, title: b.bet + ': ' + (b.decision === 'Too early' ? 'too early to judge' : b.decision === 'Stop' ? 'not working' : b.behind_plan ? 'behind plan' : 'costs too much'), reason, value: b.cost_per_extra,
         evidence: b.why + '. ' + (b.test_rate !== null ? 'Test ' + pct(b.test_rate) + ' registered vs comparison ' + pct(b.comparison_rate) : nf(b.test_registered) + ' sign-ups (no comparison group)') + '; about ' + nf(b.expected_extra_attendees) + ' extra attendees (est.).',
-        matters: b.decision === 'Too early' ? 'Judging too soon can kill a good idea or fund a lucky one.' : b.decision === 'Stop' ? 'Money spent here brings no extra people.' : 'Each extra person costs more than we agreed to pay.',
+        matters: b.decision === 'Too early' ? 'Judging too soon can kill a good idea or fund a lucky one.' : b.decision === 'Stop' ? 'Money spent here brings no extra people.' : b.behind_plan ? 'The target counts on this bet; at this pace it delivers under 60% of its share.' : 'Each extra person costs more than we agreed to pay.',
         if_nothing: b.decision === 'Too early' ? 'Nothing breaks; it gets no reserve money until the test is fair.' : 'We keep paying ' + rs(b.cost_per_extra) + ' for each extra person.',
-        owner: b.owner, action: b.decision === 'Too early' ? 'Keep the test running; no reserve money until it is fair.' : b.decision === 'Stop' ? 'Stop spending; move its budget to the best bet.' : 'Change the mechanic or cut its cost; no reserve money while above the limit.', trust: 'maybe' });
+        owner: b.owner, action: b.decision === 'Too early' ? 'Keep the test running; no reserve money until it is fair.' : b.decision === 'Stop' ? 'Stop spending; move its budget to College Partnerships.' : b.behind_plan ? 'Fix how it works (offer, channel, timing); no reserve money until it is back on course.' : 'Change the mechanic or cut its cost; no reserve money while above the limit.', trust: 'maybe' });
     });
     rows.forEach(r => {
       if (r.kind === 'bet' || r.status === 'stopped') return;

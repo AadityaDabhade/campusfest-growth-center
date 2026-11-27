@@ -55,9 +55,9 @@ def nonreg_seen(earliest):
 OWN = {'T03': 'Meera Iyer', 'T04': 'Arjun Verma', 'T05': 'Nisha Rao', 'T06': 'Dev Malhotra'}
 # id, name, channel, kind, rank, bet_type, owner, planned, cap, scale, start_week, audience, test design, objective
 CAMPS = [
-    ('C01', 'Paid Social', 'paid_social', 'channel', None, None, 'T04', 80000, 300, 0.5, 3, 'external', '', 'Reveals and reminders only'),
-    ('C02', 'Creator Partners', 'creators', 'channel', None, None, 'T05', 80000, 300, 0.5, 3, 'external', '', 'Line-up reveals with Delhi student creators'),
-    ('C03', 'College Partnerships', 'college_partners', 'channel', None, None, 'T03', 70000, 300, 0.5, 2, 'external', '', 'Society tie-ups and the 300 competition team slots (2025\'s best channel)'),
+    ('C01', 'Paid Social', 'paid_social', 'channel', None, None, 'T04', 28000, 300, 0.5, 3, 'external', '', 'Reminders to people who already know us'),
+    ('C02', 'Creator Partners', 'creators', 'channel', None, None, 'T05', 12000, 300, 0.5, 3, 'external', '', 'Line-up reveal posts by Delhi student creators'),
+    ('C03', 'College Partnerships', 'college_partners', 'channel', None, None, 'T03', 110000, 300, 0.5, 2, 'external', '', 'Society tie-ups and the 300 competition team slots (2025\'s best channel)'),
     ('B1', 'Campus Outreach', 'ambassadors', 'bet', 1, 'Low risk', 'T03', 60000, 300, 0.5, 1, 'external', 'Test colleges K01–K06 vs matched comparison K07–K12', 'Ambassadors build crews of 10+ friends; each team gets a squad link for supporters; rewards paid on verified check-ins'),
     ('B2', 'Group Pass', 'product', 'bet', 2, 'Low risk', 'T06', 70000, 300, 0.6, 3, 'external', 'Test colleges K13–K16 vs matched comparison K17–K20', 'One link registers 4–10 friends; confirm 48 hours before or the pass goes to the waitlist'),
     ('B3', 'Day Scholar Turnout', 'host_students', 'bet', 4, 'Medium risk', 'T05', 70000, 300, 0.4, 9, 'host', 'Far-commuting day scholars offered late transport vs similar far commuters not offered', 'Late shuttle and a metro-timed schedule for our students who go home daily'),
@@ -65,39 +65,41 @@ CAMPS = [
     ('B5', 'Alumni Homecoming', 'alumni', 'bet', 5, 'High risk', 'T05', 60000, 300, 0.5, 9, 'external', 'Alumni batches split at random: half get the homecoming offer, half the normal mail', 'Our alumni; ₹299 pass returned as food credit'),
 ]
 PLAN = {   # the idea, why it should work, how we test it, the stop rule (plain words, from the plan)
-    'C01': ('Short reveal and reminder ads on Instagram and YouTube.', 'Reminds people who already know us; weak at bringing new groups.', 'Week 9 holdout: some colleges see no ads.', 'Cost per attendee above ₹250 → cut to reminders only.'),
-    'C02': ('Delhi student creators post the line-up reveals.', 'Students trust other students more than ads.', 'Compared on cost per attendee with the other channels.', 'Cost per attendee above ₹250 → stop new creators.'),
-    'C03': ('Society tie-ups, stalls at other fests, and the 300 competition team slots.', '2025\'s best channel: 86% of its registrants came, at ₹81 each.', 'Compared on cost per attendee with the other channels.', 'Cost per attendee above ₹250 → stop new tie-ups. Money from a stopped bet comes here first.'),
+    'C01': ('Short reveal and reminder ads on Instagram and YouTube.', 'Reminds people who already know us; weak at bringing new groups.', 'Week 9 holdout: some colleges see no ads.', 'Opt-outs above 15% → cut to the last two weeks of reminders.'),
+    'C02': ('Delhi student creators post the line-up reveals.', 'Students trust other students more than ads.', 'Compared on cost per attendee with the other channels.', 'Cost per attendee above ₹300 → stop new creators.'),
+    'C03': ('Society tie-ups, stalls at other fests, and the 300 competition team slots.', '2025\'s best channel: 86% of its registrants came, at ₹81 each.', 'Compared on cost per attendee with the other channels.', 'Cost per attendee above ₹300 → stop new tie-ups. Money from a stopped bet comes here first.'),
     'B1': ('Ambassadors in each test college build crews of 10+ friends; every competition team gets a squad link for its supporters. Rewards are perks, paid only on verified check-ins.', 'People come with friends, and a friend asking works better than an ad (2025: person-led channels 75–86% show-up, ads 50%).', '6 colleges get ambassadors, 6 matched colleges don\'t; we compare registration rates college by college.', 'Under 200 crew captains by week 10, or no clear gap after a fair test → stop; money goes to College Partnerships.'),
     'B2': ('One link registers 4–10 friends. Everyone confirms 48 hours before, or the pass goes to the waitlist.', 'Groups decide together and show up together; in 2025 everyone who came had confirmed.', '4 colleges see group passes, 4 matched colleges see solo passes only.', 'No clear gap after a fair test → stop; money goes to College Partnerships. Under 25% of passes in groups by week 10 → change the offer (a group food discount).'),
     'B3': ('A late shuttle to the metro and a metro-timed schedule for our students who go home daily.', 'Getting home late may be why day scholars skip evenings; a week-2 survey checks this before spending.', 'Far commuters offered the shuttle vs similar far commuters not offered (they say "I\'m coming" in the app).', 'No clear gap after a fair test → stop. Turnout itself is only counted at the student-ID lane on fest days.'),
     'B4': ('Outside students work two 4-hour shifts for a capped concert pass, meals and a certificate, and bring friends.', 'A role makes people commit; volunteers also staff the gates.', 'No comparison group: every sign-up is counted, but only the 45% assumed not to come anyway count as extra.', 'Under 300 sign-ups by week 10 → keep only our own students\' roles.'),
     'B5': ('Our alumni get a ₹299 homecoming pass, returned as food credit, and batch reunions.', 'A pool no other bet reaches; a small refundable price filters for people who will come.', 'Alumni split at random: half get the offer, half the normal mail.', 'No university approval by week 6, or under 200 on the waitlist by week 9 → don\'t launch.'),
 }
+PLANX = {'B1': 730, 'B2': 720, 'B3': 380, 'B4': 340, 'B5': 450}   # extra attendees the plan counts on (model/plan_model.py, likely)
 BREAKDOWN = {
-    'C01': 'Instagram and YouTube reveal and reminder ads',
-    'C02': 'Delhi student creators for line-up reveals',
-    'C03': 'Society tie-ups and competition slots ₹40k · stalls at other fests and posters ₹30k',
+    'C01': 'Instagram and YouTube reminder ads to people who already know us (funded until the next attendee costs ₹300)',
+    'C02': 'Delhi student creators for line-up reveal posts (funded until the next attendee costs ₹300)',
+    'C03': 'Society tie-ups and competition slots ₹60k · stalls at other fests and posters ₹50k (funded until the next attendee costs ₹300)',
     'B1': 'No cash for ambassadors: perks are a certificate and letter, a free pass plus 2 friends and a backstage meet. Money: top-crew prize pool ₹10k (paid on verified check-ins) · captain merch for 10+ crews ₹20k · Crew Wall, printing and travel ₹30k',
     'B2': 'Group pass build ₹30k · confirm-or-release reminders ₹25k · waitlist SMS ₹15k',
     'B3': 'Late shuttle buses ₹50k · metro-timed schedule and signage ₹20k',
     'B4': 'Meals, tees and certificates for volunteers (they also staff the fest)',
     'B5': 'Alumni passes and food credit ₹40k · mailers and a reunion corner ₹20k',
 }
-dump('campaigns', ['campaign_name', 'channel', 'audience_type', 'objective', 'owner_name', 'created_at', 'planned_start_at', 'planned_end_at', 'campaign_id', 'owner_id', 'kind', 'bet_rank', 'bet_type', 'planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'test_design', 'status', 'reserve_released_inr', 'budget_breakdown', 'plan_idea', 'plan_why', 'plan_test', 'stop_rule'],
-     [[c[1], c[2], c[11], c[13], OWN[c[6]], ts(wk(1), 9, 0), ts(wk(c[10]), 9, 0), ts(FEST2, 21, 30), c[0], c[6], c[3], c[4], c[5], c[7], c[8], c[9], c[12], 'active', 0, BREAKDOWN[c[0]]] + list(PLAN[c[0]]) for c in CAMPS])
+dump('campaigns', ['campaign_name', 'channel', 'audience_type', 'objective', 'owner_name', 'created_at', 'planned_start_at', 'planned_end_at', 'campaign_id', 'owner_id', 'kind', 'bet_rank', 'bet_type', 'planned_budget_inr', 'cost_cap_inr', 'scale_factor', 'test_design', 'status', 'reserve_released_inr', 'budget_breakdown', 'plan_idea', 'plan_why', 'plan_test', 'stop_rule', 'plan_extra_attendees'],
+     [[c[1], c[2], c[11], c[13], OWN[c[6]], ts(wk(1), 9, 0), ts(wk(c[10]), 9, 0), ts(FEST2, 21, 30), c[0], c[6], c[3], c[4], c[5], c[7], c[8], c[9], c[12], 'active', 0, BREAKDOWN[c[0]]] + list(PLAN[c[0]]) + [PLANX.get(c[0])] for c in CAMPS])
 CO = {c[0]: c for c in CAMPS}
 def own(c): return CO[c][6] if c else None
 
+RESERVE = 530000
 dump('event', ['event_name', 'history_start', 'history_end', 'event_starts_at', 'event_ends_at', 'timezone', 'currency', 'fictional', 'simulated', 'city', 'plan_start', 'registration_opens', 'reserve_inr', 'tranche_inr', 'today', 'gate_capacity_per_hour', 'competition_opens', 'big_push', 'hostel_students', 'day_scholars'],
-     [['CampusFest 2027', START.isoformat() + 'T00:00:00', END.isoformat() + 'T00:00:00', ts(FEST1, 10, 0), ts(FEST2, 21, 30), 'Asia/Kolkata', 'INR', True, True, 'New Delhi', START.isoformat() + 'T00:00:00', LAUNCH.isoformat() + 'T00:00:00', 450000, 500000, TODAY.isoformat() + 'T00:00:00', 2500, COMP_OPENS.isoformat() + 'T00:00:00', PUSH.isoformat() + 'T00:00:00', 4000, 6000]])
+     [['CampusFest 2027', START.isoformat() + 'T00:00:00', END.isoformat() + 'T00:00:00', ts(FEST1, 10, 0), ts(FEST2, 21, 30), 'Asia/Kolkata', 'INR', True, True, 'New Delhi', START.isoformat() + 'T00:00:00', LAUNCH.isoformat() + 'T00:00:00', RESERVE, 500000, TODAY.isoformat() + 'T00:00:00', 2500, COMP_OPENS.isoformat() + 'T00:00:00', PUSH.isoformat() + 'T00:00:00', 4000, 6000]])
 dump('targets', ['effective_at', 'identified_external_people_goal', 'registration_goal', 'unique_external_visitors_goal', 'marketing_budget_inr', 'target_version', 'stretch_registration_goal', 'stretch_visitors_goal', 'all_attendees_base', 'all_attendees_stretch', 'teams_goal', 'teams_by_week6', 'teams_by_week8'],
-     [[START.isoformat() + 'T09:00:00', 7300, 4800, 4500, 1000000, '2027 plan', 6700, 6100, 12000, 14100, 300, 150, 250]])
+     [[START.isoformat() + 'T09:00:00', 6100, 4000, 3800, 1000000, '2027 plan', 5400, 5100, 11500, 13100, 250, 125, 200]])
 dump('pace_curve', ['week', 'share'], CURVE)   # the plan's pace curve is 2025's (the dashboard never sees CURVE_TRUE)
 
 # the plan's decisions, taken on time at each review (the rehearsal after "today"). Money only follows the rules:
 # each release below is what the Bets page says at that review (checked by scripts/t27.js).
-RELEASES = json.load(open('scripts/releases27.json')) if os.path.exists('scripts/releases27.json') else [[10, 'B2', 100000], [10, 'B1', 100000]]
+RELEASES = [r if len(r) > 3 else r + ['grow'] for r in (json.load(open('scripts/releases27.json')) if os.path.exists('scripts/releases27.json') else [])]
 REVIEW = {7: wk(8), 10: REVIEW1, 12: REVIEW2}
 NEXT = {7: REVIEW1, 10: REVIEW2, 12: REVIEW3}
 NAME = {'B1': 'Campus Outreach', 'B2': 'Group Pass', 'B4': 'Volunteer Corps', 'B5': 'Alumni Homecoming'}
@@ -105,16 +107,17 @@ LIMIT = {'B1': 300, 'B2': 300, 'B4': 300, 'B5': 300}
 def lakh(a): return '₹1L' if a == 100000 else '₹50k' if a == 50000 else f'₹{a/100000:g}L'
 PD = []
 for w in (7, 10, 12):
-    for wk_, bet, amt in RELEASES:
-        if wk_ == w: PD.append([f'PD{len(PD)+1}', REVIEW[w], bet, 'release_reserve', amt, f'Release {lakh(amt)} of reserve to {NAME[bet]}', f'Week {w} review: a {lakh(amt)} top-up buys extra attendees under the ₹{LIMIT[bet]} limit, and the gap is real', f'More extra attendees at under ₹{LIMIT[bet]} each', 'expected_extra_attendees', NEXT[w]])
+    for wk_, bet, amt, kind in RELEASES:
+        if wk_ == w: PD.append([f'PD{len(PD)+1}', REVIEW[w], bet, 'release_reserve', amt, f'Release {lakh(amt)} of reserve to {NAME[bet]}', f'Week {w} review: a {lakh(amt)} top-up buys extra attendees under the ₹{LIMIT[bet]} limit, and the gap is real' if kind == 'grow' else f'Week {w} review: with bad luck the forecast misses the target, so the reserve protects it with the cheapest proven top-ups', f'More extra attendees at under ₹{LIMIT[bet]} each' if kind == 'grow' else 'Bad luck beats the target', 'expected_extra_attendees', NEXT[w]])
     if w == 10:
-        PD.append([f'PD{len(PD)+1}', REVIEW1, 'C01', 'set_planned_budget', 60000, 'Cut Paid Social to reminders only', 'Week 10 review: opt-outs above the 15% guardrail (people who opt out can never be reminded)', 'Opt-outs stop rising', 'opt_out_rate', REVIEW2])
+        PD.append([f'PD{len(PD)+1}', REVIEW1, 'C01', 'set_planned_budget', 22000, 'Cut Paid Social to the last two weeks of reminders', 'Week 10 review: opt-outs above the 15% guardrail (people who opt out can never be reminded)', 'Opt-outs stop rising', 'opt_out_rate', REVIEW2])
+        PD.append([f'PD{len(PD)+1}', REVIEW1, 'B5', 'task', 0, 'Alumni Homecoming: fix the offer (batch reunions by year, a named host per batch)', 'Week 10 review: on course for under 60% of the attendees the plan counts on', 'Projected extra attendees rise toward plan', 'projected_extra', REVIEW2])
         PD.append([f'PD{len(PD)+1}', REVIEW1, 'B4', 'task', 0, 'Volunteer Corps: cut cost per volunteer (one tee, meals only on shift days)', 'Week 10 review: cost per extra attendee above the ₹300 limit', 'Cost per extra attendee falls', 'cost_per_extra', REVIEW2])
     if w == 12:
         PD.append([f'PD{len(PD)+1}', REVIEW2, 'B3', 'stop', 0, 'Stop Day Scholar Turnout', 'Week 12 review: fair test (300+ per group, 4 weeks) and no clear gap over the comparison group', 'No more spend on it', 'spend', REVIEW3])
     if not any(r[0] == w for r in RELEASES) and w > 10:
-        left = 450000 - sum(r[2] for r in RELEASES if r[0] < w)
-        PD.append([f'PD{len(PD)+1}', REVIEW[w], '', 'hold', 0, f'Hold the remaining {lakh(left)} of reserve', f"Week {w} review: no top-up buys extra attendees under the ₹300 limit with the sign-ups still to come; money only follows proof", 'Return it to the fest budget' if w == 12 else 'Re-check at the next review', 'spend', NEXT[w]])
+        left = RESERVE - sum(r[2] for r in RELEASES if r[0] < w)
+        PD.append([f'PD{len(PD)+1}', REVIEW[w], '', 'hold', 0, f'Hold the remaining {lakh(left)} of reserve', f"Week {w} review: no top-up buys extra attendees under the ₹300 limit, and no protect step costs under ₹900 (3× the limit)", 'Return it to the fest budget' if w == 12 else 'Re-check at the next review', 'spend', NEXT[w]])
 dump('plan_decisions', ['decision_id', 'decided_at', 'campaign_id', 'kind', 'amount_inr', 'title', 'reason', 'expected', 'metric_key', 'review_at'],
      [[p[0], p[1].isoformat() + 'T10:00:00', p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9].isoformat() + 'T10:00:00'] for p in PD])
 REL = {}
@@ -130,21 +133,23 @@ def person(ptype, college, dist, arm, bet, camp, first, src, seg='', team=None):
     return p
 cols_out = [f'K{i:02d}' for i in range(1, 34)]  # K25-K33 unused now; scaled colleges are K34 onwards
 dist = {k: ('near' if i % 3 else 'far') for i, k in enumerate(cols_out)}
-def chan(): return R.choices(['C01', 'C02', 'C03'], [0.16, 0.40, 0.44])[0]
+# sign-ups that would happen without any bet: credited like the plan model's channels (2025 cost per attendee scaled to
+# the new budgets: Paid Social ~190, Creators ~80, College Partnerships ~720) plus unpaid search and word of mouth (~200, no campaign)
+def chan(): return R.choices(['C01', 'C02', 'C03', None], [0.16, 0.07, 0.60, 0.17])[0]
 # n, colleges, arm, bet, share registering via the bet link, final reg rate, people from, bet effect from, confirm prob, cancel prob, show-up if confirmed
 GROUPS = [
-    (7200, cols_out[0:6], 'test', 'B1', 0.72, 0.295, wk(2), LAUNCH, 0.88, 0.04, 0.77),
-    (7100, cols_out[6:12], 'comparison', 'B1', 0.0, 0.134, wk(2), LAUNCH, 0.83, 0.06, 0.74),
-    (4500, cols_out[12:16], 'test', 'B2', 0.62, 0.272, wk(3), LAUNCH, 0.93, 0.03, 0.78),
-    (4400, cols_out[16:20], 'comparison', 'B2', 0.0, 0.134, wk(3), PUSH, 0.83, 0.06, 0.74),
-    (3400, cols_out[20:24], '', None, 0.0, 0.116, wk(3), LAUNCH, 0.83, 0.07, 0.74),
+    (7200, cols_out[0:6], 'test', 'B1', 0.72, 0.231, wk(2), LAUNCH, 0.88, 0.04, 0.77),
+    (3500, cols_out[6:12], 'comparison', 'B1', 0.0, 0.070, wk(2), LAUNCH, 0.83, 0.06, 0.74),
+    (4500, cols_out[12:16], 'test', 'B2', 0.62, 0.260, wk(3), LAUNCH, 0.93, 0.03, 0.78),
+    (2200, cols_out[16:20], 'comparison', 'B2', 0.0, 0.070, wk(3), PUSH, 0.83, 0.06, 0.74),
+    (1500, cols_out[20:24], '', None, 0.0, 0.070, wk(3), LAUNCH, 0.83, 0.07, 0.74),
     (2300, ['ALUMNI'], 'test', 'B5', 0.85, 0.235, wk(9), wk(9), 0.83, 0.04, 0.70),
     (2250, ['ALUMNI'], 'comparison', 'B5', 0.0, 0.056, wk(9), wk(9), 0.80, 0.05, 0.66),
     (1000, cols_out[20:24], '', 'B4', 1.0, 0.440, wk(6), wk(6), 0.92, 0.03, 0.88),
     (335, ['HOST'], 'test', 'B3', 1.0, 0.360, wk(9), wk(9), 0.90, 0.02, 0.85),
     (325, ['HOST'], 'comparison', 'B3', 0.0, 0.350, wk(9), wk(9), 0.90, 0.02, 0.80),
 ]
-BASE = {'B1': 0.134, 'B2': 0.134}   # what test colleges register at without the bet
+BASE = {'B1': 0.070, 'B2': 0.070}   # what test colleges register at without the bet
 VOLUME = 0.86                         # people per college list, relative to the first draft of this simulation
 SHOW = {'C01': -0.10, 'C03': 0.02}
 attendees = []   # (person, registration id or None, campaign, host)
@@ -213,7 +218,8 @@ for n, cols, arm, bet, bshare, rate, start, effect, conf, canc, show in GROUPS:
         register(p, rd, rc, conf, canc, show, host)
 # competition teams: register early (they need time to prepare), through College Partnerships (society tie-ups); not in any bet's test groups
 TEAM_W = {2: 0.10, 3: 0.12, 4: 0.12, 5: 0.12, 6: 0.12, 7: 0.10, 8: 0.12, 9: 0.10, 10: 0.10}
-for t in range(1, 301):
+N_TEAMS = 240   # truth: outside teams that sign up for the 300 slots (the plan assumes 150 / 250 / 300)
+for t in range(1, N_TEAMS + 1):
     w = R.choices(list(TEAM_W), list(TEAM_W.values()))[0]
     rd = wk(w) + dt.timedelta(days=R.randint(0, 6)); col = R.choice(cols_out[:24]); team = f'TM{t:03d}'
     for k in range(R.choice([2, 3, 3, 4, 4, 5])):
@@ -259,10 +265,10 @@ chk.sort(key=lambda x: x[0])
 for i, c in enumerate(chk): c[4] = f'CK{i+1:06d}'
 
 # ---------- daily marketing spend, following the plan and its decisions ----------
-BEFORE = {'C01': 52000, 'C02': 38000, 'C03': 30000, 'B1': 26000, 'B2': 30000, 'B3': 22000, 'B4': 36000, 'B5': 14000}   # to Sun 24 Jan (week 10)
+BEFORE = {'C01': 18000, 'C02': 6000, 'C03': 47000, 'B1': 26000, 'B2': 30000, 'B3': 22000, 'B4': 36000, 'B5': 14000}   # to Sun 24 Jan (week 10)
 PLANNED = {c[0]: c[7] for c in CAMPS}
 AFTER = {cid: max(0, PLANNED[cid] - BEFORE[cid]) for cid in PLANNED}
-AFTER['C01'] = 60000 - BEFORE['C01'] if 60000 > BEFORE['C01'] else 8000   # cut to reminders at the week 10 review
+AFTER['C01'] = 22000 - BEFORE['C01']   # cut to the last two weeks of reminders at the week 10 review
 AFTER['B4'] = int((PLANNED['B4'] - BEFORE['B4']) * 0.5)                   # cost cut at the week 10 review
 AFTER['B3'] = 18000                                                       # stopped at the week 12 review
 daily = []
@@ -288,14 +294,14 @@ for c in CAMPS:
 # release gives the bet's mechanism to the next colleges in line from the release day; only the lift on top is the
 # release's effect, and the colleges not given it stay as the comparison. Funded colleges do worse than the test (truth).
 R = random.Random(9091)
-EXP = [f'K{34 + j}' for j in range(9)]
-EXP_N = 1400
+EXP = [f'K{34 + j}' for j in range(12)]
+EXP_N = 1100
 assign, nxt = {}, 0
-for w, bet, amt in sorted(RELEASES):
-    k = max(1, round(amt / 25000))
+for w, bet, amt, kind in sorted(RELEASES):
+    k = max(1, round(amt / 50000))   # one new college per ₹50k
     for c_ in EXP[nxt:nxt + k]: assign[c_] = (bet, REVIEW[w])
     nxt += k
-LIFT = {'B1': 0.085, 'B2': 0.065}
+LIFT = {'B1': 0.12, 'B2': 0.09}   # per funded college; below the test's own gap (truth: scaled bets do worse)
 exp_att = []
 before_n = len(attendees)
 for c_ in EXP:
@@ -303,7 +309,7 @@ for c_ in EXP:
     bet, from_ = assign.get(c_, (None, None))
     for i in range(EXP_N):
         u_base, u_lift = R.random(), R.random()
-        registers = u_base < 0.05
+        registers = u_base < 0.04
         lifted = bet is not None and not registers and u_lift < LIFT[bet]
         if registers: rd = reg_day(LAUNCH)
         elif lifted: rd = reg_day(from_)
@@ -340,7 +346,7 @@ tasks = [
     ['TKseed02', 'Open competition registrations; 150 teams by week 6', 'T03', wk(6) + dt.timedelta(days=6), 'done', 'B1'],
     ['TKseed03', 'Big push: line-up reveal, Group Pass and Welcome Back cards', 'T06', PUSH, 'done', 'B2'],
     ['TKseed04', 'Crew captains: 300 signed up (week 10 milestone)', 'T03', TODAY, 'doing', 'B1'],
-    ['TKseed05', 'Week 10 review: forecast, Warn/Act list, first reserve release', 'GL', REVIEW1, 'todo', None],
+    ['TKseed05', 'Week 10 review: forecast, Warn/Act list, reserve decision', 'GL', REVIEW1, 'todo', None],
     ['TKseed06', 'Read the week-9 paid holdout: do ads bring friend groups?', 'T04', REVIEW1 + dt.timedelta(days=2), 'todo', 'C01'],
     ['TKseed07', 'Arrival design: 60% of pass holders have an entry window (week 12)', 'SEC', REVIEW2 - dt.timedelta(days=1), 'todo', None],
     ['TKseed08', 'Fest eve check: gates, waitlist release, volunteer shifts', 'GL', EVE, 'todo', None],
