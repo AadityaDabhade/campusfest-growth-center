@@ -33,11 +33,11 @@ days_each_25 = (Y25['day1'] + Y25['day2']) / Y25['attendees']       # 1.35 days 
 
 # ---------------- the plan's money (D) ----------------
 CHANNELS = {'Paid Social': 80000, 'Creator Partners': 80000, 'College Partnerships': 70000}   # reveals/reminders; partnerships run the 300 team slots
-BETS = {'Campus Crews': 60000, 'Group Pass': 70000, 'Day Scholar Turnout': 70000, 'Volunteer Corps': 60000, 'Alumni Homecoming': 60000}
+BETS = {'Campus Outreach': 60000, 'Group Pass': 70000, 'Day Scholar Turnout': 70000, 'Volunteer Corps': 60000, 'Alumni Homecoming': 60000}
 RESERVE = 450000
 BUDGET = sum(CHANNELS.values()) + sum(BETS.values()) + RESERVE       # ₹10L
-CAP = {'Campus Crews': 235, 'Group Pass': 250, 'Day Scholar Turnout': 200, 'Volunteer Corps': 200, 'Alumni Homecoming': 250}
-SCALE = {'Campus Crews': 0.5, 'Group Pass': 0.6, 'Day Scholar Turnout': 0.4, 'Volunteer Corps': 0.3, 'Alumni Homecoming': 0.5}   # A: how well each scales
+CAP = {k: 300 for k in ('Campus Outreach', 'Group Pass', 'Day Scholar Turnout', 'Volunteer Corps', 'Alumni Homecoming')}   # D: one limit, about our most expensive 2025 channel (Paid Social ₹274)
+SCALE = {'Campus Outreach': 0.5, 'Group Pass': 0.6, 'Day Scholar Turnout': 0.4, 'Volunteer Corps': 0.3, 'Alumni Homecoming': 0.5}   # A: how well each scales
 
 HOSTEL, DAY_SCHOLARS = 4000, 6000                                   # A: host college, 10,000 students
 GATE_PER_HOUR = 6 * 420                                             # A: 6 QR lanes × ~7 scans a minute
@@ -59,15 +59,18 @@ def run(with_reserve):
     vol_n = tri(300, 600, 700); vol_new = tri(0.30, 0.45, 0.60)
     volunteers = vol_n * vol_new * 0.92 * (1 + tri(0.3, 0.5, 0.8))  # sign-ups × not coming anyway (A) × check-in × (1 + friends each brings, A)
     alumni = (tri(410, 468, 565) if rng.random() < 0.6 else 0)      # 60% chance the university approves (A)
-    regs_base = 5760 + 300 * 3.5                                    # registrations the show-up lift applies to
+    regs_base = 4800 + 300 * 3.5                                    # base registrations (passes + team members) the show-up lift applies to
     gp = gp_regs + regs_base * showup_lift                          # + registrants who now come because of confirm + waitlist
     outside = (paid + organic + teams + crews + squads + gp + volunteers + alumni) / (1 - tri(0.04, 0.06, 0.08))
     reserve_extra = 0
-    if with_reserve:   # the money rule: reserve goes to the bets whose top-up stays under their cap (crews and group pass here)
+    if with_reserve:   # the money rule at the week-7 review: a top-up only if it buys attendees under the limit; 76% of sign-ups still to come
         y = tri(0.5, 0.8, 1.0)                                      # new money does a bit worse than the test (A)
-        for name, final, R in (('Campus Crews', crews + squads, 200000), ('Group Pass', gp, 200000)):
-            P = BETS[name]; extra = final * (((P + R) / P) ** SCALE[name] - 1)
-            if R / max(extra, 1) <= CAP[name]: reserve_extra += extra * y
+        left = 0.76                                                 # S: 2025's curve has 24% of sign-ups in by week 7
+        for name, final in (('Campus Outreach', crews + squads), ('Group Pass', gp), ('Volunteer Corps', volunteers), ('Alumni Homecoming', alumni)):
+            P = BETS[name]
+            for R in (100000, 50000):
+                extra = final * (((P + R) / P) ** SCALE[name] - 1) * left
+                if extra > 0 and R / extra <= CAP[name]: reserve_extra += extra * y; break
         outside += reserve_extra
     host = HOSTEL * tri(0.85, 0.90, 0.95) + DAY_SCHOLARS * tri(0.55, 0.65, 0.75) + day_sch
     parts = dict(paid=paid, organic=organic, teams=teams, crews=crews, squads=squads, gp=gp, day_sch=day_sch, volunteers=volunteers,
@@ -106,7 +109,7 @@ if __name__ == '__main__':
     print('\nTARGETS: base = %d all (%d outside) · stretch = %d all (%d outside)' % (r100(tb), r100(ob), r100(min(qg, CEIL_RUSH)), r100(rg)))
     print('Gate limit: %d with 2025-style rush, %d with entry windows' % (CEIL_RUSH, CEIL_WIN))
     bets_likely = {k: summ(no_res, k)[1] for k in ('crews', 'squads', 'gp', 'day_sch', 'volunteers', 'alumni')}
-    for name, keys in (('Campus Crews', ('crews', 'squads')), ('Group Pass', ('gp',)), ('Day Scholar Turnout', ('day_sch',)), ('Volunteer Corps', ('volunteers',)), ('Alumni Homecoming', ('alumni',))):
+    for name, keys in (('Campus Outreach', ('crews', 'squads')), ('Group Pass', ('gp',)), ('Day Scholar Turnout', ('day_sch',)), ('Volunteer Corps', ('volunteers',)), ('Alumni Homecoming', ('alumni',))):
         vals = [sum(r[k] for k in keys) for r in no_res]; lo, mid, hi = pct(vals, 0.1), pct(vals, 0.5), pct(vals, 0.9); mean = sum(vals) / len(vals)
-        P = BETS[name]; tr = lambda R: R / (mean * (((P + R) / P) ** SCALE[name] - 1)) if mean > 0 else 0
+        P = BETS[name]; tr = lambda R: R / (mean * (((P + R) / P) ** SCALE[name] - 1) * 0.76) if mean > 0 else 0
         print(f'  {name:20s} ₹{P//1000}k  bad {lo:5.0f}  likely {mid:5.0f}  good {hi:5.0f}  mean {mean:5.0f}  ₹/extra {P/mean:4.0f}  ₹50k top-up ₹{tr(50000):.0f} each, ₹1L ₹{tr(100000):.0f} (cap ₹{CAP[name]})  bad-case per ₹1k {lo/P*1000:.1f}')
