@@ -244,13 +244,13 @@
     showup_interested_late: { value: 0.05, low: 0.0, high: 0.15, label: 'Show-up of people still unconfirmed on fest eve', tag: 'A', evidence: '2025: 0 of 29 people unconfirmed on fest eve came' },
     showup_waitlisted: { value: 0.20, low: 0.0, high: 0.30, label: 'Show-up of waitlisted registrants', tag: 'A', evidence: '2025: 0 of 88 (no waitlist release then); 2027 releases unscanned passes at 2 pm' },
     walkin_share: { value: 0.06, low: 0.04, high: 0.08, label: 'Walk-ins as a share of all visitors', tag: 'A', evidence: '2025: 6.1% of visitors had not registered' },
-    future_regs: { value: 1.0, low: 0.75, high: 1.35, label: 'Registrations still to come vs the plan curve', tag: 'A', evidence: 'A 3-point shift in sign-up timing at week 10 moves the sign-ups still to come by 10–15%, and 2025 ended with a late surge' },
+    future_regs: { value: 1.0, low: 0.75, high: 1.45, label: 'Registrations still to come vs the plan curve', tag: 'A', evidence: 'A 3-point shift in sign-up timing at week 10 moves the sign-ups still to come by 10–15%, and 2025 ended with a late surge' },
     hostel_attend: { value: 0.90, low: 0.85, high: 0.95, label: 'Hostel students who come (counted at the concert gate)', tag: 'A', evidence: 'Plan assumption: they are already on campus; no 2025 data on our own students' },
     dayscholar_attend: { value: 0.65, low: 0.55, high: 0.75, label: 'Day scholars who come (student-ID lane)', tag: 'A', evidence: 'Plan assumption: no 2025 data on our own students' },
     scale_factor: { value: 0.5, low: 0.4, high: 0.7, label: 'How well extra spend scales (1 = no diminishing returns)', tag: 'A', evidence: 'Planning value; checked at each review' },
     volunteer_new: { value: 0.45, low: 0.3, high: 0.6, label: 'Volunteers who would not have come otherwise', tag: 'A', evidence: 'Plan assumption (about 55% of volunteers would have come anyway); there is no comparison group' },
     release_yield: { value: 0.8, low: 0.5, high: 1.0, label: 'How much of a bet\'s estimated gain new money delivers', tag: 'A', evidence: 'Scaled bets usually do a bit worse than their test' },
-    cost_cap: { value: 300, low: 250, high: 350, label: 'Limit per extra attendee (₹): what one more outside attendee is worth to us', tag: 'D', evidence: 'In 2025 the fest paid ₹274–337 per attendee for ads and kept buying them, so an attendee was worth at least ~₹300 to it' },
+    cost_cap: { value: 500, low: 300, high: 650, label: 'Limit per extra attendee (₹): what one more outside attendee is worth to us', tag: 'D', evidence: 'In 2025 the last rupee of ads bought attendees at ₹550–670 and the fest kept buying; ₹500 stays under that' },
     gate_capacity: { value: 500, low: 400, high: 600, label: 'Safe gate arrivals per hour', tag: 'A', evidence: '2025 venue; 2027 plan uses 6 lanes ≈ 2,500/hr' }
   };
   function A(assump, k, which) { const a = (assump && assump[k]) || DEFAULT_ASSUMPTIONS[k]; return a[which || 'value']; }
@@ -757,11 +757,10 @@
       amt[r.campaign_id] = size; left -= size; price[r.campaign_id] = size > 50000 ? r.tranche_cost_1l : r.tranche_cost_50k;
       why[r.campaign_id] = 'Grow: ' + (size > 50000 ? '₹1L (gap High) buys attendees at ' + rs(r.tranche_cost_1l) : '₹50k buys attendees at ' + rs(r.tranche_cost_50k)) + ' each, under the ' + rs(r.cost_cap_inr) + ' limit';
     });
-    // 2. PROTECT (weeks 10 and 12): if the MOST LIKELY outcome misses the target, price a ladder of ₹50k steps on every
-    // campaign that works (proven bets and channels not marked Change or Stop), cheapest first, at most ₹1.5L more per
-    // campaign and at most 2× the limit per extra attendee. Release it only if the whole ladder brings most likely to the
-    // target: money that cannot save the commitment is not worth paying above the limit for.
-    const t = targetAt(ds, D) || {}, goal = t.unique_external_visitors_goal, dl = daysBetween(D, ds.event.eventStartDay), cap = A(assump, 'cost_cap'), ceiling = 2 * cap, per = 150000;
+    // 2. PROTECT (weeks 10 and 12): while the MOST LIKELY outcome misses the target, take ₹50k steps on every campaign that
+    // works (proven bets and channels not marked Change or Stop), cheapest first, at most ₹1.5L more per campaign and at
+    // most 1.5× the limit per extra attendee. Each step is taken on its own merit: unspent money buys no attendees.
+    const t = targetAt(ds, D) || {}, goal = t.unique_external_visitors_goal, dl = daysBetween(D, ds.event.eventStartDay), cap = A(assump, 'cost_cap'), ceiling = 1.5 * cap, per = 150000;
     let protect = null;
     if (goal && dl > 1 && dl <= 35) {
       const ext = a => Object.keys(a).map(id => { const fx = trancheEffect(ds, D, id, a[id], assump); return { amount: a[id], attendees: fx ? fx.attendees : 0 }; });
@@ -777,15 +776,15 @@
           lad[best.c.id] = (lad[best.c.id] || 0) + 50000; room -= 50000; steps.push({ campaign_id: best.c.id, campaign: best.c.name, price: Math.round(best.p) });
           f = forecast(ds, D, assump, { extra: ext(lad) });
         }
-        const feasible = f.likely >= goal;
-        protect = { target: goal, likely_before: f0.likely, bad_before: f0.bad, likely_after: f.likely, bad_after: f.bad, feasible, steps, spend: steps.length * 50000, price_ceiling: ceiling, per_campaign_cap: per,
-          verdict: feasible ? 'Release: these steps bring the most likely outcome to the target' : 'Commitment at risk: even every step under ' + rs(ceiling) + ' leaves most likely at ' + nf(f.likely) + ', so no money above the limit is released; fix what is behind plan instead' };
+        const feasible = steps.length > 0, met = f.likely >= goal;
+        protect = { target: goal, likely_before: f0.likely, bad_before: f0.bad, likely_after: f.likely, bad_after: f.bad, feasible, met, steps, spend: steps.length * 50000, price_ceiling: ceiling, per_campaign_cap: per,
+          verdict: !feasible ? 'Commitment at risk: no step costs under ' + rs(ceiling) + ' per extra attendee; fix what is behind plan' : met ? 'Release: these steps bring the most likely outcome to the target' : 'Release these steps; most likely still ends at ' + nf(f.likely) + ', so also fix what is behind plan' };
         if (feasible) steps.forEach(s => { amt[s.campaign_id] = (amt[s.campaign_id] || 0) + 50000; left -= 50000; why[s.campaign_id] = (why[s.campaign_id] ? why[s.campaign_id] + '; then ' : '') + 'Protect: most likely ' + nf(f0.likely) + ' is under the ' + nf(goal) + ' target; cheapest step ₹50k at ' + rs(s.price) + ' each'; price[s.campaign_id] = Math.max(price[s.campaign_id] || 0, s.price); });
       }
     }
     const out = Object.keys(amt).map(id => { const r = all.find(x => x.campaign_id === id) || { bet: campName(ds, id), cost_cap_inr: A(assump, 'cost_cap'), sure_lift_above_zero: null, gap_real: null }; return { campaign_id: id, bet: r.bet, amount: amt[id], next_tranche_cost: price[id], cap: r.cost_cap_inr, sure: r.sure_lift_above_zero, gap_real: r.gap_real, kind: /^Protect/.test(why[id]) ? 'protect' : 'grow', rule: why[id] }; }).sort((a, b) => b.amount - a.amount);
     const released = []; ds.camps.forEach((c, id) => { const st = campState(ds, id, D); if (st.released) released.push({ campaign_id: id, bet: c.campaign_name, amount: st.released, last: st.lastRelease }); });
-    const res = { reserve_total: ds.event.reserve || 0, reserve_left: reserveLeft(ds, D), suggestions: out, protect, already_released: released, rule: 'Two steps. Grow: a proven bet (Scale) gets ₹50k, or ₹1L with a High gap, if its next attendee costs no more than the limit after the 80% yield. Protect (weeks 10 and 12): if the most likely outcome misses the target, price ₹50k steps on every working campaign (proven bets and channels), cheapest first, up to ₹1.5L each and 2× the limit per extra attendee; release them only if together they bring most likely to the target.' };
+    const res = { reserve_total: ds.event.reserve || 0, reserve_left: reserveLeft(ds, D), suggestions: out, protect, already_released: released, rule: 'Two steps. Grow: a proven bet (Scale) gets ₹50k, or ₹1L with a High gap, if its next attendee costs no more than the limit after the 80% yield. Protect (weeks 10 and 12): if the most likely outcome misses the target, price ₹50k steps on every working campaign (proven bets and channels), cheapest first, one ₹50k step at a time, up to ₹1.5L more each and 1.5× the limit per extra attendee, until most likely reaches the target.' };
     ds._cache.set(key, res); return res;
   }
 

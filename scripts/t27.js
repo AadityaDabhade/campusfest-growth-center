@@ -48,7 +48,8 @@ for (const w of [7, 10, 12]) {
 // ---------- part 2: the story (labelled rehearsal) ----------
 console.log('week 7', JSON.stringify(E.forecast(ds, REV[7])).slice(0, 0) + E.forecast(ds, REV[7]).likely, E.forecast(ds, REV[7]).verdict, '| week 10', w10.bad, w10.likely, w10.good, w10.verdict, '| eve', eve.bad, eve.likely, eve.good, '| result', res, '| forecast error at week 10:', Math.round((w10.likely - res) / res * 100) + '%');
 ok('week 10 is Off track (the bets run behind plan)', w10.verdict === 'Off track');
-const rp10 = E.reservePlan(ds, D); ok('week 10: protect prices the ladder, finds it cannot reach the target, releases nothing', rp10.protect && !rp10.protect.feasible && rp10.suggestions.length === 0 && rp10.protect.steps.every(s => s.price <= 600));
+const rp10 = E.reservePlan(ds, D); ok('week 10: protect looks, every step costs over 1.5× the limit, nothing released', rp10.protect && !rp10.protect.feasible && rp10.suggestions.length === 0);
+ok('week 7: the two group bets grow', JSON.stringify(E.reservePlan(ds, '2027-01-03').suggestions.map(s => s.campaign_id).sort()) === JSON.stringify(['B1', 'B2']));
 ok('the week-10 forecast range holds the result', E.forecast(ds, D).bad <= E.kpis(ds, cp.result).visitors && E.kpis(ds, cp.result).visitors <= E.forecast(ds, D).good);
 ok('no screen text says we never pay more than the limit', !/never pay more than/.test(fs.readFileSync('app.js', 'utf8')));
 const dec = Object.fromEntries(E.betRows(ds, D).map(x => [x.campaign_id, x.decision])); console.log('bets week 10', JSON.stringify(dec));

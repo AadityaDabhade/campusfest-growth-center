@@ -6,12 +6,12 @@ Tags: S = sourced (the provided 2025 dataset or a cited source) · A = our assum
 How it works
 - FLOOR: what the plan delivers if none of the five bets beats its comparison group: paid channels on 2025's
   own cost per attendee (with diminishing returns), unpaid search, competition teams, walk-ins, and our own students.
-- ONE PRICE: ₹300 is what one more outside attendee is worth to us (D): 2025 paid ₹274–337 per attendee for ads and
-  kept buying. Each channel is funded until its NEXT attendee costs ₹300 (equal marginal cost).
-- The reserve (₹2.5L) has two jobs. GROW: at the week-7 review, a proven bet gets a top-up if its next attendee costs
-  ≤ ₹300 after the 80% yield. PROTECT: at week 10, if the run's most likely outcome (seen with forecast error) misses the
-  base, a ladder of ₹50k steps (≤ ₹600 each, ≤ ₹1.5L per campaign) is released only if it reaches the base.
-  The other ₹2.8L is not committed: before evidence nothing buys an attendee for ≤ ₹300.
+- ONE PRICE: ₹500 is the most we pay for one more outside attendee (D): 2025's last rupee of ads bought attendees at
+  ₹550–670 and the fest kept buying. Channels stay near what 2025 tested (₹1.5L; their next attendee costs ~₹300 there);
+  scaling them further rests on a guess, so the rest of the money waits for proof.
+- The reserve (₹5.3L) has two jobs. GROW: at the week-7 review, a proven bet gets a top-up if its next attendee costs
+  ≤ ₹500 after the 80% yield. PROTECT: at week 10, while the run's most likely outcome (seen with forecast error) misses
+  the base, ₹50k steps (≤ ₹750 each, ≤ ₹1.5L per campaign), each taken on its own merit.
 - 20,000 runs, every input drawn from its range (triangular). The fixed seed gives the same answer every time.
 - BASE (what we commit to) = the plan without the reserve with bad luck (10th percentile, rounded: 89% of runs reach it).
 - LIKELY = the middle run. STRETCH = the plan with the reserve deployed, with good luck (90th percentile, rounded down: 12% of runs reach it),
@@ -35,14 +35,15 @@ peak_share_25 = Y25['peak_entries'] / Y25['day1']                   # 28% of a d
 days_each_25 = (Y25['day1'] + Y25['day2']) / Y25['attendees']       # 1.35 days per person
 
 # ---------------- the plan's money (D) ----------------
-LIMIT = 300                                                         # D: what one more outside attendee is worth (2025 paid ₹274–337 per attendee for ads and kept buying)
-# D: fund each channel until its NEXT attendee costs ₹300. With attendees = A25 × (S / S25)^0.5 the next one costs
+LIMIT = 500                                                         # D: what one more outside attendee is worth (2025's last ad rupee bought attendees at ₹550–670)
+# D: channels stay near the spend 2025 tested (their next attendee costs about ₹300 here); beyond that the curve is a guess,
+# so extra money waits for bets that prove themselves. (At ₹300: next attendee costs With attendees = A25 × (S / S25)^0.5 the next one costs
 # S / (0.5 × attendees), so S* = (₹300 × 0.5 × A25)² / S25: Paid Social ≈ ₹28k, Creators ≈ ₹12k, College Partnerships ≈ ₹1.08L.
 opt = lambda k: (LIMIT * 0.5 * CH25[k][1]) ** 2 / CH25[k][0]
 CHANNELS = {'Paid Social': 28000, 'Creator Partners': 12000, 'College Partnerships': 110000}   # rounded from opt(); partnerships also run the competition slots
 BETS = {'Campus Outreach': 60000, 'Group Pass': 70000, 'Day Scholar Turnout': 70000, 'Volunteer Corps': 60000, 'Alumni Homecoming': 60000}
-RESERVE = 250000                                                    # D: grow at most ₹2L + room for protect (sized by the run below)
-NOT_NEEDED = 280000                                                 # D: returned on day 1: before evidence nothing buys an attendee for ≤ ₹300
+RESERVE = 530000                                                    # D: grow at most ₹2L + room for protect (sized by the run below)
+NOT_NEEDED = 0                                                 # D: returned on day 1: before evidence nothing buys an attendee for ≤ ₹300
 BUDGET = sum(CHANNELS.values()) + sum(BETS.values()) + RESERVE + NOT_NEEDED   # ₹10L
 CAP = {k: LIMIT for k in ('Campus Outreach', 'Group Pass', 'Day Scholar Turnout', 'Volunteer Corps', 'Alumni Homecoming')}   # D: the same price for every rupee
 BASE_T = 3800                                                       # D: the base we commit to (re-checked by the run below)
@@ -101,10 +102,10 @@ def run(with_reserve):
                     d = fin * (((P0 + got[k] + 50000) / P0) ** sc - ((P0 + got[k]) / P0) ** sc) * 0.51
                     price = 50000 / (d * YIELD)
                     if best is None or price < best[1]: best = (k, price, d)
-                if best is None or best[1] > 2 * LIMIT: break
+                if best is None or best[1] > 1.5 * LIMIT: break
                 got[best[0]] += 50000; add_seen += best[2] * YIELD; add_true += best[2] * y
             fired = 1
-            if seen + add_seen >= BASE_T: protect_spend, protect_extra = sum(got.values()), add_true
+            protect_spend, protect_extra = sum(got.values()), add_true   # each step stands on its own
             outside += protect_extra
     host = HOSTEL * tri(0.85, 0.90, 0.95) + DAY_SCHOLARS * tri(0.55, 0.65, 0.75) + day_sch
     parts = dict(paid=paid, organic=organic, teams=teams, crews=crews, squads=squads, gp=gp, day_sch=day_sch, volunteers=volunteers,
