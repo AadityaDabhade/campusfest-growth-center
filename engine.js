@@ -96,7 +96,8 @@
       try {
         if (p.replaces_plan) t.plan_skip.push(p.replaces_plan);
         if (e.type === 'campaign_update') {
-          t.campaigns = t.campaigns.map(c => c.campaign_id === p.campaign_id ? Object.assign({}, c, p.fields) : c);
+          // owner, name and other plain fields change at once; money and status changes are dated (as_of), so each date shows what was decided by then
+          t.campaigns = t.campaigns.map(c => { if (c.campaign_id !== p.campaign_id) return c; const n = Object.assign({}, c, p.fields || {}); if (p.change) n._changes = (c._changes || []).concat([Object.assign({ at: p.as_of || null, edit_id: e.id }, p.change)]); return n; });
         } else if (e.type === 'campaign_add') {
           t.campaigns.push(Object.assign({}, p));
         } else if (e.type === 'spend_add') {
@@ -247,6 +248,7 @@
     hostel_attend: { value: 0.90, low: 0.85, high: 0.95, label: 'Hostel students who come (counted at the concert gate)', tag: 'A', evidence: 'Plan assumption: they are already on campus; no 2025 data on our own students' },
     dayscholar_attend: { value: 0.65, low: 0.55, high: 0.75, label: 'Day scholars who come (student-ID lane)', tag: 'A', evidence: 'Plan assumption: no 2025 data on our own students' },
     scale_factor: { value: 0.5, low: 0.4, high: 0.7, label: 'How well extra spend scales (1 = no diminishing returns)', tag: 'A', evidence: 'Planning value; checked at each review' },
+    volunteer_new: { value: 0.45, low: 0.3, high: 0.6, label: 'Volunteers who would not have come otherwise', tag: 'A', evidence: 'Plan assumption (about 55% of volunteers would have come anyway); there is no comparison group' },
     release_yield: { value: 0.8, low: 0.5, high: 1.0, label: 'How much of a bet\'s estimated gain new money delivers', tag: 'A', evidence: 'Scaled bets usually do a bit worse than their test' },
     cost_cap: { value: 250, low: 200, high: 300, label: 'Cost cap per extra attendee (₹)', tag: 'A', evidence: 'Plan cap' },
     gate_capacity: { value: 500, low: 400, high: 600, label: 'Safe gate arrivals per hour', tag: 'A', evidence: '2025 venue; 2027 plan uses 6 lanes ≈ 2,500/hr' }
@@ -288,8 +290,19 @@
       else if (p.kind === 'stop') st.status = 'stopped';
       else if (p.kind === 'pause') st.status = 'paused';
     });
+    // the user's own decisions (edits), from the date they were made. In a rehearsal they count only up to "today":
+    // later dates are the simulated run, which follows the plan's decisions.
+    st.user = { delta: 0, plannedBefore: st.planned, status: null, at: null, changes: [] };
+    if (userWindow(ds, D)) (c._changes || []).filter(x => !x.at || x.at <= D).forEach(x => {
+      st.user.changes.push(x); st.user.at = x.at;
+      if (x.release) { st.released += num(x.release); st.planned = (st.planned || 0) + num(x.release); st.user.delta += num(x.release); st.lastRelease = x.at; }
+      if (x.planned !== undefined) { st.user.delta += num(x.planned) - (st.planned || 0); st.planned = num(x.planned); }
+      if (x.status) { st.status = x.status; st.user.status = x.status; }
+    });
     return st;
   }
+  function userWindow(ds, D) { return !ds.event.today || D <= ds.event.today; }
+  function userChanged(ds) { let n = 0; ds.camps.forEach(c => { n += (c._changes || []).length; }); return n; }
   function planDecisionsAt(ds, D) { const cut = cutoff(D); return ds.plan.filter(p => p.decided_at && p.decided_at <= cut); }
 
   /* ---------- forecast: the fest played 1,000 times with different luck ---------- */
@@ -318,6 +331,8 @@
         future = rr * dl; how = 'registrations so far + last 7 days\' rate (' + round(rr, 1) + '/day) for ' + dl + ' more days, with room for a late surge';
       }
     }
+    // money and status changes the user made (budget moves, releases, pauses) shift the outcome until the data catches up
+    const userFx = live || o.noUser ? [] : userEffects(ds, D, assump), ext = userFx.concat(o.extra || []);
     let notYet = null;
     if (live) { notYet = { c: 0, o: 0 }; s.regByPerson.forEach((r, p) => { if (s.visitors.has(p)) return; if (r.status === 'confirmed') notYet.c++; else if (r.status !== 'cancelled') notYet.o++; }); }
     const rnd = seeded(ds.label + '|' + D), runs = [], plain = [];
@@ -330,8 +345,9 @@
         total = (R + future * m) * pr / (1 - ws);
       }
       plain.push(total);
-      (o.extra || []).forEach(x => { if (x.cost > 0) total += (x.amount / x.cost) * (x.amount > 0 ? y : 1); });
+      ext.forEach(x => { const n = x.attendees !== undefined ? x.attendees : x.cost > 0 ? x.amount / x.cost : 0; total += n * (n > 0 ? y : 1); });
       runs.push(Math.max(s.visitorCount, total));
+      if (ext.length) { let t0 = plain[plain.length - 1]; (o.extra || []).length && userFx.forEach(x => { t0 += x.attendees * (x.attendees > 0 ? y : 1); }); plain[plain.length - 1] = t0; }
     }
     // our own students (no registration step): hostel students and day scholars, each with its own range
     const H = ev.hostel || 0, DS = ev.dayScholars || 0, totals = [];
@@ -342,6 +358,7 @@
     return Object.assign(out, {
       mode: live ? 'live' : 'forecast', bad: r10(q.bad), likely: r10(q.likely), good: r10(q.good), verdict: verdict(q.bad, q.likely),
       chance: base ? round(runs.filter(v => v >= base).length / N, 2) : null, chance_stretch: stretch ? round(runs.filter(v => v >= stretch).length / N, 2) : null,
+      user_changes: userFx.length ? userFx.map(x => ({ campaign: campName(ds, x.campaign_id), change: x.label, attendees: x.attendees })) : null,
       before_extra: o.extra && o.extra.length ? { bad: r10(q0.bad), likely: r10(q0.likely), good: r10(q0.good), verdict: verdict(q0.bad, q0.likely) } : null,
       projected_registrations: live ? R : Math.round(R + future), attend_per_registrant: round(pr0, 3), days_left: daysLeft,
       total: totals.length ? (() => { const q2 = pick(totals), tb = t.all_attendees_base || null; return { bad: r10(q2.bad), likely: r10(q2.likely), good: r10(q2.good), target: tb, stretch: t.all_attendees_stretch || null, our_students: r10(q2.likely - q.likely), verdict: tb ? (q2.bad >= tb ? 'Safe' : q2.likely >= tb ? 'Ahead, not safe yet' : 'Off track') : null }; })() : null,
@@ -398,6 +415,9 @@
       const ia = s.ia[id] || {};
       const pc = t => (s.iaPeopleByCamp[id + '|' + t] || new Set()).size;
       const expected = st.confirmed * A(assump, 'showup_confirmed') + st.interested * interestedRate(A(assump, 'showup_interested'), A(assump, 'showup_interested_late'), daysBetween(D, ds.event.eventStartDay)) + st.waitlisted * A(assump, 'showup_waitlisted');
+      let teamMembers = 0; if (id) M.forEach((r, p) => { if (r.campaign_id === id) { const pp = ds.people.get(p); if (pp && pp.segment === 'competitor') teamMembers++; } });
+      // before the fest, cost is judged on the whole plan: planned budget ÷ attendees expected once all sign-ups are in (today's ÷ share of the sign-up window passed)
+      const win = id ? windowShare(ds, D, c) : null, finalExp = win ? expected / win : null, plannedNow = id ? Math.max(cs.planned || 0, a.spend) : null;
       return {
         campaign_id: id, campaign: campName(ds, id), channel: c.channel || (id ? '' : 'none'), owner_id: c.owner_id || null, owner: id ? ownerName(ds, c.owner_id) : 'Growth lead',
         kind: c.kind || (id ? 'channel' : ''), bet_type: c.bet_type || null, audience: c.audience_type === 'host' ? 'our students' : 'outside', cost_cap_inr: c.cost_cap_inr || null, reserve_released_inr: cs.released || 0,
@@ -410,7 +430,8 @@
         cancel_rate: round(div(st.cancelled, registered), 4),
         visitors, visitors_registered: visReg, showup: round(div(visReg, registered), 4),
         expected_visitors: Math.round(expected),
-        cost_per_registration: round(div(a.spend, registered), 1), cost_per_visitor: round(div(a.spend, visitors), 1), cost_per_expected_visitor: round(div(a.spend, expected), 1),
+        cost_per_registration: round(div(a.spend, registered), 1), cost_per_visitor: round(div(a.spend, visitors), 1),
+        cost_per_expected_visitor: finalExp ? round(div(plannedNow, finalExp), 1) : round(div(a.spend, expected), 1), expected_final_visitors: finalExp ? Math.round(finalExp) : null, window_share: win ? round(win, 3) : null, team_members: teamMembers,
         emails_sent: ia.nurture_email_sent || 0, emails_opened: ia.nurture_email_opened || 0, emails_clicked: ia.nurture_email_clicked || 0,
         open_rate: round(div(ia.nurture_email_opened || 0, ia.nurture_email_sent || 0), 4), click_rate: round(div(ia.nurture_email_clicked || 0, ia.nurture_email_sent || 0), 4),
         opt_outs: pc('opted_out'), opt_out_rate: round(div(pc('opted_out'), pc('nurture_email_sent') || pc('page_visit')), 4),
@@ -458,7 +479,7 @@
     ];
     steps.forEach((x, i) => { x.from_prev = i && steps[i - 1].n ? round(x.n / steps[i - 1].n, 4) : null; x.cost_each = x.n ? round(spend / x.n, 0) : null; });
     let worst = null; steps.forEach((x, i) => { if (i && x.from_prev !== null && (!worst || x.from_prev < worst.from_prev)) worst = x; });
-    return { asOf: D, campaign: f.campaign, steps, walkins, total_attended: attended !== null ? attended + walkins : null, spend, biggest_drop: worst ? worst.key : null, started, ended };
+    return { asOf: D, campaign: f.campaign, steps, walkins, competitors: filt ? 0 : s.compRegistered, total_attended: attended !== null ? attended + walkins : null, spend, biggest_drop: worst ? worst.key : null, started, ended };
   }
   function anonFunnel(ds, D, campaignId) {
     const s = snapshot(ds, D); const z = { spend: 0, impressions: 0, clicks: 0, reach: 0, sessions: 0, starts: 0 };
@@ -567,46 +588,104 @@
     const ended = D >= ds.event.eventEndDay;
     const f = rows.find(r => r.campaign_id === fromId), t = rows.find(r => r.campaign_id === toId);
     if (!f || !t) return { error: 'Unknown campaign id' };
-    const b = A(assump, 'scale_factor');
-    const base = r => ended ? r.visitors : r.expected_visitors;
-    const amt = Math.min(Math.max(0, amount), f.spend);
-    const curve = (A0, s0, s1) => s0 > 0 ? A0 * Math.pow(Math.max(0, s1) / s0, b) : 0;
-    const lost = base(f) - curve(base(f), f.spend, f.spend - amt);
-    const gained = curve(base(t), t.spend, t.spend + amt) - base(t);
+    if (ended) return { asOf: D, error: 'The fest is over: money can no longer change attendance.' };
+    const fp = campState(ds, fromId, D).planned || f.spend, amt = Math.min(Math.max(0, amount), Math.max(0, fp - f.spend));
+    if (!(amt > 0)) return { asOf: D, error: f.campaign + ' has no unspent planned money to move (planned ' + rs(fp) + ', spent ' + rs(f.spend) + ').' };
+    const lo = trancheEffect(ds, D, fromId, -amt, assump), gi = trancheEffect(ds, D, toId, amt, assump), y = A(assump, 'release_yield');
+    const lost = lo ? -lo.attendees : 0, gained = gi ? gi.attendees : 0;
     return {
-      asOf: D, moved: amt, from: f.campaign, to: t.campaign, basis: ended ? 'verified visitors (S)' : 'expected visitors from registrations (A)',
-      scale_factor: b, visitors_lost: Math.round(lost), visitors_gained: Math.round(gained), net_change: Math.round(gained - lost),
-      next_rupee_cost_from: round(div(div(f.spend, base(f)), b), 0), next_rupee_cost_to: round(div(div(t.spend, base(t)), b), 0),
-      caveat: 'Assumes extra spend works like past spend, with diminishing returns (scale factor ' + b + '). It is a planning estimate, not a result. Confirm with a holdout test before moving large amounts.'
+      asOf: D, moved: amt, from: f.campaign, to: t.campaign, basis: 'Each campaign\'s own curve: attendees it is on course for at its planned budget, with diminishing returns (its scale factor). The same maths as the Bets page and the forecast.',
+      attendees_lost: lost, attendees_gained_if_it_works_like_its_test: gained, attendees_gained_likely: Math.round(gained * y), net_change_likely: Math.round(gained * y - lost),
+      cost_each_from: lo ? lo.cost_each : null, cost_each_to: gi ? gi.cost_each : null, from_detail: lo ? lo.basis : null, to_detail: gi ? gi.basis : null,
+      caveat: 'Planning estimate. New money usually does a bit worse than the test (we count ' + Math.round(y * 100) + '% of it as most likely). The forecast tool gives the effect on the total with its range.'
     };
   }
 
+  /* Share of a campaign's sign-up window that has passed by D, on the pace curve (1 once registrations close).
+     Used to project what today's numbers grow to by the fest, so early costs are not judged on half the results. */
+  function windowShare(ds, D, c) {
+    if (D >= addDays(ds.event.eventStartDay, -1)) return 1;
+    const sh = shareAt(ds, D);
+    if (sh === null) { const s = snapshot(ds, D), f = s.registered ? forecastRegs(ds, D) : null; return f ? Math.min(1, Math.max(0.05, s.registered / f)) : null; }
+    const start = [day((c && (c.effect_starts_at || c.planned_start_at)) || '') || ds.event.start, ds.event.regOpens || ''].sort().pop();
+    const s0 = D > start ? shareAt(ds, start) || 0 : sh, w = s0 >= 1 ? 1 : (sh - s0) / (1 - s0);
+    return w > 0 ? Math.min(1, Math.max(0.05, w)) : null;
+  }
+  function forecastRegs(ds, D) { const ser = dailySeries(ds, addDays(D, -6), D), rr = ser.registrations.reduce((a, b) => a + b, 0) / 7, s = snapshot(ds, D); return s.registered + rr * Math.max(0, daysBetween(D, addDays(ds.event.eventStartDay, -1))); }
+  /* What a change in a campaign's money does to attendees, on its own diminishing-returns curve:
+     attendees(budget) = projected attendees at the planned budget × (budget ÷ planned)^scale.
+     A top-up of R buys projected × ((P+R)/P)^b − projected extra attendees; a cut loses the same way. */
+  function trancheEffect(ds, D, id, amount, assump, o) {
+    o = o || {}; const c = ds.camps.get(id); if (!c || !amount) return null;
+    const b = c.scale_factor || A(assump, 'scale_factor'), bet = c.kind === 'bet';
+    let final;
+    if (bet) { const r = betRows(ds, D, assump).find(x => x.campaign_id === id); final = r ? r.projected_extra_at_plan : null; }
+    else { const r = campaignRows(ds, D, { assumptions: assump }).find(x => x.campaign_id === id); final = r ? r.expected_final_visitors : null; }
+    const cs = campState(ds, id, D), spent = (snapshot(ds, D).anon[id] || { spend: 0 }).spend, P0 = Math.max(o.planned !== undefined ? o.planned : (cs.planned || 0), spent, 1);
+    const win = windowShare(ds, D, c), rem = win === null ? 1 : Math.max(0, 1 - win);
+    if (!(rem > 0)) return { campaign_id: id, campaign: c.campaign_name, amount, attendees: 0, cost_each: null, planned: P0, basis: 'Registrations have closed: money can no longer change attendance' };
+    if (!(final > 0)) return { campaign_id: id, campaign: c.campaign_name, amount, attendees: 0, cost_each: null, planned: P0, basis: 'No measured effect yet, so no attendees are counted' };
+    const P1 = Math.max(spent, P0 + amount), extra = final * (Math.pow(P1 / P0, b) - 1) * rem;
+    return { campaign_id: id, campaign: c.campaign_name, amount: P1 - P0, attendees: Math.round(extra), cost_each: extra ? round(Math.abs((P1 - P0) / extra), 0) : null, planned: P0, projected_at_plan: Math.round(final), scale_factor: b,
+      window_left: round(rem, 3), basis: (bet ? 'Extra attendees this bet is on course for' : 'Attendees this campaign is on course for') + ' at its planned ' + rs(P0) + ' (' + nf(final) + ') × ((' + rs(P1) + ' ÷ ' + rs(P0) + ')^' + b + ' − 1) × ' + Math.round(rem * 100) + '% of sign-ups still to come' };
+  }
+  function userEffects(ds, D, assump) {
+    if (D >= ds.event.eventStartDay || !userWindow(ds, D)) return [];
+    const out = [];
+    ds.camps.forEach((c, id) => {
+      const cs = campState(ds, id, D); if (!cs.user || !cs.user.changes.length) return;
+      if (cs.user.status && cs.user.status !== 'active') {
+        const r = c.kind === 'bet' ? betRows(ds, D, assump).find(x => x.campaign_id === id) : campaignRows(ds, D, { assumptions: assump }).find(x => x.campaign_id === id);
+        const now = r ? (c.kind === 'bet' ? r.expected_extra_attendees : r.expected_visitors) : 0, fin = r ? (c.kind === 'bet' ? r.projected_extra_at_plan : r.expected_final_visitors) : 0;
+        if (fin > now) out.push({ campaign_id: id, label: cs.user.status, attendees: -Math.round(fin - now) });
+      } else if (cs.user.delta) {
+        const fx = trancheEffect(ds, D, id, cs.user.delta, assump, { planned: cs.planned - cs.user.delta });
+        if (fx && fx.attendees) out.push({ campaign_id: id, label: (cs.user.delta > 0 ? '+' : '−') + rs(Math.abs(cs.user.delta)), attendees: fx.attendees });
+      }
+    });
+    return out;
+  }
   /* ---------- bets: test vs comparison, expected extra attendees, next-tranche cost ---------- */
+  /* t distribution CDF (normal approximation with a small-sample correction; good to about 0.01 for df ≥ 3) */
+  function tCdf(t, df) { if (!(df > 0)) return normCdf(t); const z = t * (1 - 1 / (4 * df)) / Math.sqrt(1 + t * t / (2 * df)); return normCdf(z); }
   function normCdf(z) { const t = 1 / (1 + 0.2316419 * Math.abs(z)); const d = 0.3989423 * Math.exp(-z * z / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; }
   function betRows(ds, D, assump) {
+    const key = 'bets|' + D + '|' + (assump ? JSON.stringify(assump) : ''); if (ds._cache.has(key)) return ds._cache.get(key);
+    const out = betRows0(ds, D, assump); ds._cache.set(key, out); return out;
+  }
+  function betRows0(ds, D, assump) {
     const s = snapshot(ds, D), cut = s.cut, bets = ds.tables.campaigns.filter(c => c.kind === 'bet');
     if (!bets.length) return [];
-    const z = () => ({ n: 0, reg: 0, confirmed: 0, interested: 0, waitlisted: 0, cancelled: 0 }), arms = {};
+    const z = () => ({ n: 0, reg: 0, confirmed: 0, interested: 0, waitlisted: 0, cancelled: 0 }), arms = {}, expansion = z();
     ds.tables.people.forEach(p => {
+      if (p.arm === 'expansion' && p.first_seen_at && p.first_seen_at <= cut) { expansion.n++; const r = s.regByPerson.get(p.person_id); if (r) { expansion.reg++; expansion[r.status]++; } }
       if (!p.test_bet || !p.first_seen_at || p.first_seen_at > cut || !(p.person_type === 'external' || p.person_type === 'host')) return;
-      const k = p.arm === 'test' || p.arm === 'comparison' ? p.arm : 'direct';
-      const g = (arms[p.test_bet] = arms[p.test_bet] || { test: z(), comparison: z(), direct: z() })[k]; g.n++;
+      const k = p.arm === 'test' || p.arm === 'comparison' || p.arm === 'scaled' || p.arm === 'scaled_comparison' ? p.arm : 'direct';
+      const g = (arms[p.test_bet] = arms[p.test_bet] || { test: z(), comparison: z(), direct: z(), scaled: z(), scaled_comparison: z() })[k]; g.n++;
       const r = s.regByPerson.get(p.person_id) || s.hostReg.get(p.person_id); if (r) { g.reg++; g[r.status]++; }
+      if (p.college_id) { g.cl = g.cl || {}; const c = g.cl[p.college_id] = g.cl[p.college_id] || { n: 0, reg: 0 }; c.n++; if (r) c.reg++; }
     });
     const sc = A(assump, 'showup_confirmed'), si = interestedRate(A(assump, 'showup_interested'), A(assump, 'showup_interested_late'), daysBetween(D, ds.event.eventStartDay)), sw = A(assump, 'showup_waitlisted');
     const apr = g => g.reg ? (g.confirmed * sc + g.interested * si + g.waitlisted * sw) / g.reg : 0;
     const minN = 300;
     return bets.map(c => {
-      const id = c.campaign_id, a = arms[id] || { test: z(), comparison: z(), direct: z() }, sp = (s.anon[id] || { spend: 0 }).spend, cs = campState(ds, id, D);
+      const id = c.campaign_id, a = arms[id] || { test: z(), comparison: z(), direct: z(), scaled: z(), scaled_comparison: z() }, sp = (s.anon[id] || { spend: 0 }).spend, cs = campState(ds, id, D);
       const startDay = [day(c.planned_start_at) || ds.event.start, ds.event.regOpens || ''].sort().pop(), weeks = Math.max(0, daysBetween(startDay, D) + 1) / 7;
       const cap = c.cost_cap_inr || A(assump, 'cost_cap'), scale = c.scale_factor || A(assump, 'scale_factor');
       const hasComp = a.comparison.n > 0;
-      let rt = null, rc = null, lift = null, se = null, sure = null, extraRegs, perReg, extra, extraLow = null, extraHigh = null, evidence = [], fair = true;
+      let rt = null, rc = null, lift = null, se = null, sure = null, unit = null, extraRegs, perReg, extra, extraLow = null, extraHigh = null, evidence = [], fair = true;
       if (hasComp) {
         rt = div(a.test.reg, a.test.n); rc = div(a.comparison.reg, a.comparison.n);
         lift = rt !== null && rc !== null ? rt - rc : null;
-        se = a.test.n && a.comparison.n ? Math.sqrt(rt * (1 - rt) / a.test.n + rc * (1 - rc) / a.comparison.n) : null;
-        sure = lift !== null && se ? normCdf(lift / se) : null;
+        // colleges, not people, are what was assigned: when each side has 3+ colleges, compare college rates (Welch t-test);
+        // otherwise people were assigned one by one, so compare people
+        const cr = g => Object.values(g.cl || {}).filter(c => c.n >= 20).map(c => c.reg / c.n), ct = cr(a.test), cc = cr(a.comparison);
+        const mean = v => v.reduce((x, y) => x + y, 0) / v.length, vr = v => { const m = mean(v); return v.reduce((x, y) => x + (y - m) * (y - m), 0) / Math.max(1, v.length - 1); };
+        if (ct.length >= 3 && cc.length >= 3) {
+          const vt = vr(ct) / ct.length, vc = vr(cc) / cc.length; se = Math.sqrt(vt + vc);
+          const df = se ? Math.pow(vt + vc, 2) / ((vt * vt) / (ct.length - 1) + (vc * vc) / (cc.length - 1) || 1) : 1;
+          sure = lift !== null && se ? tCdf(lift / se, df) : lift > 0 ? 1 : 0; unit = ct.length + ' vs ' + cc.length + ' colleges';
+        } else { se = a.test.n && a.comparison.n ? Math.sqrt(rt * (1 - rt) / a.test.n + rc * (1 - rc) / a.comparison.n) : null; sure = lift !== null && se ? normCdf(lift / se) : null; unit = 'people'; }
         perReg = apr(a.test); extraRegs = lift !== null ? a.test.n * lift : 0; extra = extraRegs * perReg;
         extraLow = lift !== null && se ? a.test.n * Math.max(0, lift - 0.8416 * se) * perReg : null;
         extraHigh = lift !== null && se ? a.test.n * Math.max(0, lift + 0.8416 * se) * perReg : null;
@@ -616,13 +695,27 @@
         else if (a.test.reg < 50) evidence.push('only ' + a.test.reg + ' sign-ups in the test group; need 50');
         fair = !evidence.length;
         if (sure !== null && sure < 0.8) evidence.push('gap only ' + Math.round(sure * 100) + '% likely to be real; need 80%');
+        else if (lift !== null && lift < 0.02) evidence.push('gap under 2 points (' + (lift * 100).toFixed(1) + '); too small to matter');
       } else {
-        const g = a.direct; perReg = apr(g); extraRegs = g.reg; extra = g.reg * perReg;
+        const g = a.direct, nw = A(assump, 'volunteer_new'); perReg = apr(g); extraRegs = g.reg * nw; extra = extraRegs * perReg;
+        extraLow = g.reg * A(assump, 'volunteer_new', 'low') * perReg; extraHigh = g.reg * A(assump, 'volunteer_new', 'high') * perReg;
         if (ds.event.regOpens && D < ds.event.regOpens) { evidence.push('registrations open ' + dlabel(ds.event.regOpens)); fair = false; }
         else if (g.reg < 30) { evidence.push('only ' + g.reg + ' sign-ups so far; need 30'); fair = false; }
-        else evidence.push('no comparison group: every sign-up counted as extra (A)');
+        else evidence.push('no comparison group: only the ' + Math.round(nw * 100) + '% assumed not to have come anyway are counted (A)');
       }
-      const avg = extra > 0 ? sp / extra : null, next = avg !== null ? avg / scale : null, avgLow = extraLow > 0 ? sp / extraLow : null;
+      // colleges added with reserve money: judged against similar new colleges that did not get it
+      let scaledExtra = 0, scaledInfo = null;
+      if (a.scaled.n && cs.released > 0) {
+        const rs_ = div(a.scaled.reg, a.scaled.n), rb = expansion.n ? div(expansion.reg, expansion.n) : rc;
+        scaledExtra = rb !== null ? a.scaled.n * Math.max(-1, rs_ - rb) * apr(a.scaled) : 0;
+        scaledInfo = { people: a.scaled.n, registered: a.scaled.reg, rate: round(rs_, 4), baseline_rate: round(rb, 4), extra_attendees: Math.round(scaledExtra) };
+      }
+      // project to the fest: today's extra people are only the share of the bet's sign-up window that has passed
+      const win = windowShare(ds, D, Object.assign({}, c, { planned_start_at: startDay })) || 1, eve = D >= addDays(ds.event.eventStartDay, -1);
+      const P = eve ? sp : Math.max(cs.planned || 0, sp), finalExtra = extra > 0 ? extra / win + (scaledExtra > 0 ? scaledExtra / win : 0) : 0, finalLow = extraLow > 0 ? extraLow / win : null;
+      const avg = finalExtra > 0 && P > 0 ? P / finalExtra : null, avgLow = finalLow > 0 && P > 0 ? P / finalLow : null;
+      // money added now can only move the sign-ups still to come: the share of the window left (1 − share passed)
+      const rem = eve ? 0 : Math.max(0, 1 - (win || 0)), tranche = R => finalExtra > 0 && P > 0 && rem > 0 ? R / (finalExtra * (Math.pow((P + R) / P, scale) - 1) * rem) : null, t50 = tranche(50000), t100 = tranche(100000), next = t50;
       const evidenceOk = hasComp ? evidence.length === 0 : fair;
       let decision, why;
       if (cs.status === 'stopped') { decision = 'Stopped'; why = 'Stopped at a review' + (cs.decisions.length ? ' (' + cs.decisions[cs.decisions.length - 1].reason + ')' : ''); }
@@ -630,26 +723,32 @@
       else if (hasComp && !evidenceOk) { decision = 'Stop'; why = 'Fair test, but no clear gap over the comparison group (' + evidence.join('; ') + ')'; }
       else if (!(extra > 0)) { decision = 'Stop'; why = 'No lift over the comparison group'; }
       else if (avg > cap) { decision = 'Change'; why = 'Each extra attendee costs ' + rs(avg) + ', above its ' + rs(cap) + ' limit'; }
-      else if (next <= cap && (avgLow === null || avgLow <= cap)) { decision = 'Scale'; why = 'The next extra attendee would cost about ' + rs(next) + ', under its ' + rs(cap) + ' limit'; }
-      else { decision = 'Keep'; why = 'Works at ' + rs(avg) + ' per extra attendee, but the next one would cost about ' + rs(next) + ', above its ' + rs(cap) + ' limit: no reserve money'; }
+      else if (next <= cap && (avgLow === null || avgLow <= cap) && !eve) { decision = 'Scale'; why = 'A ₹50k top-up would buy extra attendees at about ' + rs(t50) + ' each' + (t100 ? ' (₹1L: ' + rs(t100) + ')' : '') + ', under its ' + rs(cap) + ' limit'; }
+      else { decision = 'Keep'; why = 'Works at ' + rs(avg) + ' per extra attendee' + (eve ? '' : ', but a ₹50k top-up would cost about ' + rs(next) + ' each, above its ' + rs(cap) + ' limit: no reserve money'); }
       return {
         campaign_id: id, bet: c.campaign_name, rank: c.bet_rank || null, type: c.bet_type || null, owner_id: c.owner_id, owner: ownerName(ds, c.owner_id), audience: c.audience_type === 'host' ? 'our students' : 'outside', test_design: c.test_design || '',
         weeks_live: round(weeks, 1), spend: sp, planned_budget_inr: cs.planned, reserve_released_inr: cs.released, last_release: cs.lastRelease, status: cs.status,
         test_people: hasComp ? a.test.n : a.direct.n, test_registered: hasComp ? a.test.reg : a.direct.reg, comparison_people: hasComp ? a.comparison.n : null, comparison_registered: hasComp ? a.comparison.reg : null,
-        test_rate: round(rt, 4), comparison_rate: round(rc, 4), lift: round(lift, 4), sure_lift_above_zero: round(sure, 3), gap_real: sure === null ? null : sure >= 0.9 ? 'High' : sure >= 0.8 ? 'Medium' : 'Low',
+        test_rate: round(rt, 4), comparison_rate: round(rc, 4), lift: round(lift, 4), sure_lift_above_zero: round(sure, 3), gap_real: sure === null ? null : sure >= 0.9 ? 'High' : sure >= 0.8 ? 'Medium' : 'Low', compared_by: unit,
         extra_registrations: Math.round(extraRegs), attendees_per_registrant: round(perReg, 3), expected_extra_attendees: Math.round(extra), expected_extra_low: extraLow !== null ? Math.round(extraLow) : null, expected_extra_high: extraHigh !== null ? Math.round(extraHigh) : null,
-        cost_per_extra: round(avg, 0), cost_per_extra_low_end: round(avgLow, 0), scale_factor: scale, next_tranche_cost: round(next, 0), cost_cap_inr: cap,
+        cost_per_extra: round(avg, 0), cost_per_extra_low_end: round(avgLow, 0), scale_factor: scale, next_tranche_cost: round(next, 0), tranche_cost_50k: round(t50, 0), tranche_cost_1l: round(t100, 0), cost_cap_inr: cap,
+        projected_extra_at_plan: Math.round(finalExtra), window_share: round(win, 3), window_left: round(rem, 3), planned_for_cost: P, funded_colleges: scaledInfo,
         evidence_ok: evidenceOk, evidence_gaps: evidence, decision, why,
-        basis: 'Extra registrations = test people × (test rate − comparison rate). Expected extra attendees = extra registrations × show-up by status (A). Next-tranche cost = cost per extra ÷ scale factor (A).'
+        basis: 'Extra registrations = test people × (test rate − comparison rate). Expected extra attendees = extra registrations × show-up by status (A). Before the fest, cost per extra = planned budget ÷ extra attendees projected to the fest (today\'s ÷ share of the sign-up window passed). Top-up cost = R ÷ (projected × ((P+R)/P)^scale − projected).'
       };
     }).sort((x, y) => (x.rank || 99) - (y.rank || 99));
   }
   function reserveReleased(ds, D) { let t = 0; ds.camps.forEach((c, id) => { t += campState(ds, id, D).released; }); return t; }
-  function reserveLeft(ds, D) { return Math.max(0, (ds.event.reserve || 0) - reserveReleased(ds, D || ds.event.end)); }
+  function reserveLeft(ds, D) { return (ds.event.reserve || 0) - reserveReleased(ds, D || ds.event.end); }
   function reservePlan(ds, D, assump) {
     const all = betRows(ds, D, assump), rows = all.filter(r => r.decision === 'Scale').sort((a, b) => a.next_tranche_cost - b.next_tranche_cost);
     let left = reserveLeft(ds, D); const out = [];
-    rows.forEach(r => { if (left <= 0 || (r.last_release && daysBetween(r.last_release, D) < 13)) return; const size = r.sure_lift_above_zero !== null && r.sure_lift_above_zero >= 0.9 ? 100000 : 50000; const amt = Math.min(size, left); left -= amt; out.push({ campaign_id: r.campaign_id, bet: r.bet, amount: amt, next_tranche_cost: r.next_tranche_cost, cap: r.cost_cap_inr, sure: r.sure_lift_above_zero, gap_real: r.gap_real, rule: size > 50000 ? '₹1L release: gap High (90%+ likely real)' : '₹50k release: gap at least Medium, 2+ weeks, 300+ per group' }); });
+    rows.forEach(r => {
+      if (left <= 0 || (r.last_release && daysBetween(r.last_release, D) < 13)) return;
+      const high = r.sure_lift_above_zero !== null && r.sure_lift_above_zero >= 0.9, size = high && r.tranche_cost_1l !== null && r.tranche_cost_1l <= r.cost_cap_inr ? 100000 : 50000;
+      if (size === 50000 && left < 50000) return; const amt = Math.min(size, left); left -= amt;
+      out.push({ campaign_id: r.campaign_id, bet: r.bet, amount: amt, next_tranche_cost: size > 50000 ? r.tranche_cost_1l : r.tranche_cost_50k, cap: r.cost_cap_inr, sure: r.sure_lift_above_zero, gap_real: r.gap_real, rule: size > 50000 ? '₹1L: gap High and ₹1L buys attendees at ' + rs(r.tranche_cost_1l) + ' each, under the ' + rs(r.cost_cap_inr) + ' limit' : '₹50k: ₹50k buys attendees at ' + rs(r.tranche_cost_50k) + ' each, under the limit' + (high ? ' (₹1L would cost ' + rs(r.tranche_cost_1l) + ' each)' : '; gap Medium') });
+    });
     const released = []; ds.camps.forEach((c, id) => { const st = campState(ds, id, D); if (st.released) released.push({ campaign_id: id, bet: c.campaign_name, amount: st.released, last: st.lastRelease }); });
     return { reserve_total: ds.event.reserve || 0, reserve_left: reserveLeft(ds, D), suggestions: out, already_released: released, rule: 'Money goes to the bet whose next extra attendee is cheapest, only under its cap. ₹1L needs a High gap, ₹50k a Medium one. One release per bet until its review two weeks later.' };
   }
@@ -753,17 +852,17 @@
     const s = snapshot(ds, D), cut = s.cut;
     const cmeta = id => { const c = ds.camps.get(id) || {}; return { campaign_name: campName(ds, id || null), channel: c.channel || null, owner_name: ownerName(ds, c.owner_id) }; };
     const tfields = t => ({ date: day(t), month: t ? t.slice(0, 7) : null, week: t ? weekStart(day(t)) : null, hour: t ? Number(t.slice(11, 13)) : null, weekday: t ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(day(t) + 'T00:00:00Z').getUTCDay()] : null });
-    if (table === 'people') return ds.tables.people.filter(p => p.first_seen_at && p.first_seen_at <= cut && reached(p)).map(p => Object.assign({ person_id: p.person_id, person_type: p.person_type, first_touch_source: p.first_touch_source, campaign_id: p.first_campaign_id, registered: s.regByPerson.has(p.person_id), visited: s.visitors.has(p.person_id), status: (s.regByPerson.get(p.person_id) || {}).status || null }, cmeta(p.first_campaign_id), tfields(p.first_seen_at)));
+    if (table === 'people') return ds.tables.people.filter(p => p.first_seen_at && p.first_seen_at <= cut && reached(p) && p.person_type === 'external').map(p => Object.assign({ person_id: p.person_id, person_type: p.person_type, first_touch_source: p.first_touch_source, campaign_id: p.first_campaign_id, registered: s.regByPerson.has(p.person_id), visited: s.visitors.has(p.person_id), status: (s.regByPerson.get(p.person_id) || {}).status || null }, cmeta(p.first_campaign_id), tfields(p.first_seen_at)));
     if (table === 'registrations') return s.regs.map(r => Object.assign({ registration_id: r.registration_id, person_id: r.person_id, status: r.status, campaign_id: r.campaign_id, visited: s.visitors.has(r.person_id) }, cmeta(r.campaign_id), tfields(r.registered_at)));
     if (table === 'visitors') return Array.from(s.visitors.entries()).map(([p, t]) => { const r = s.regByPerson.get(p); return Object.assign({ person_id: p, registered: !!r, status: r ? r.status : null, campaign_id: r ? r.campaign_id : null, first_entry: t }, cmeta(r ? r.campaign_id : null), tfields(t)); });
-    if (table === 'checkins') return ds.tables.checkins.filter(c => c.occurred_at && c.occurred_at <= cut).map(c => Object.assign({ event_id: c.event_id, person_id: c.person_id, result: c.result, verification: c.verification, source: c.source, person_type: (ds.people.get(c.person_id) || {}).person_type || null, campaign_id: c.campaign_id }, cmeta(c.campaign_id), tfields(c.occurred_at)));
-    if (table === 'interactions') return ds.tables.interactions.filter(i => i.occurred_at && i.occurred_at <= cut).map(i => Object.assign({ interaction_id: i.interaction_id, person_id: i.person_id, event_type: i.event_type, detail: ds.details[i.detail_code] !== undefined ? ds.details[i.detail_code] : (i.detail || null), person_type: (ds.people.get(i.person_id) || {}).person_type || null, campaign_id: i.campaign_id }, cmeta(i.campaign_id), tfields(i.occurred_at)));
+    if (table === 'checkins') return ds.tables.checkins.filter(c => c.occurred_at && c.occurred_at <= cut && ds.ext.has(c.person_id)).map(c => Object.assign({ event_id: c.event_id, person_id: c.person_id, result: c.result, verification: c.verification, source: c.source, person_type: (ds.people.get(c.person_id) || {}).person_type || null, campaign_id: c.campaign_id }, cmeta(c.campaign_id), tfields(c.occurred_at)));
+    if (table === 'interactions') return ds.tables.interactions.filter(i => i.occurred_at && i.occurred_at <= cut && ds.ext.has(i.person_id)).map(i => Object.assign({ interaction_id: i.interaction_id, person_id: i.person_id, event_type: i.event_type, detail: ds.details[i.detail_code] !== undefined ? ds.details[i.detail_code] : (i.detail || null), person_type: (ds.people.get(i.person_id) || {}).person_type || null, campaign_id: i.campaign_id }, cmeta(i.campaign_id), tfields(i.occurred_at)));
     if (table === 'daily') return ds.tables.daily.filter(r => day(r.activity_date) <= D).map(r => Object.assign({ activity_id: r.activity_id, campaign_id: r.campaign_id, platform: r.platform, impressions: num(r.impressions), clicks: num(r.clicks), reported_reach: num(r.reported_reach), landing_page_sessions: num(r.landing_page_sessions), registration_starts: num(r.registration_starts), marketing_spend_inr: num(r.marketing_spend_inr) }, cmeta(r.campaign_id), tfields(r.activity_date)));
     if (table === 'campaigns') return ds.tables.campaigns.map(c => Object.assign({}, c, cmeta(c.campaign_id)));
-    if (table === 'status_history') return ds.tables.reg_history.filter(h => h.effective_at && h.effective_at <= cut).map(h => Object.assign({ registration_id: h.registration_id, person_id: h.person_id, status: h.status, campaign_id: h.campaign_id }, cmeta(h.campaign_id), tfields(h.effective_at)));
+    if (table === 'status_history') return ds.tables.reg_history.filter(h => h.effective_at && h.effective_at <= cut && ds.ext.has(h.person_id)).map(h => Object.assign({ registration_id: h.registration_id, person_id: h.person_id, status: h.status, campaign_id: h.campaign_id }, cmeta(h.campaign_id), tfields(h.effective_at)));
     return null;
   }
-  const QUERY_TABLES = { people: 'Identified people (first seen ≤ date) with their latest registration status and whether they visited', registrations: 'Registrations (external people) with latest status as of the date', visitors: 'Unique verified external visitors with first entry time', checkins: 'All admission records (any result) up to the date', interactions: 'Identified actions: page_visit, brochure_download, registration_start, event_question_submitted, nurture_email_sent/opened/clicked, opted_out', daily: 'Daily campaign activity: impressions, clicks, reported_reach, landing_page_sessions, registration_starts, marketing_spend_inr', campaigns: 'Campaign list', status_history: 'Every registration status version up to the date' };
+  const QUERY_TABLES = { people: 'Outside people who responded (first seen ≤ date), with their latest registration status and whether they visited. Internal, staff, test and our own students are excluded, as on every screen', registrations: 'Registrations (external people) with latest status as of the date', visitors: 'Unique verified external visitors with first entry time', checkins: 'All admission records of outside people (any result) up to the date', interactions: 'Outside people\'s actions: page_visit, brochure_download, registration_start, event_question_submitted, nurture_email_sent/opened/clicked, opted_out', daily: 'Daily campaign activity: impressions, clicks, reported_reach, landing_page_sessions, registration_starts, marketing_spend_inr', campaigns: 'Campaign list', status_history: 'Every registration status version up to the date' };
   function query(ds, D, spec) {
     const rows = virtualRows(ds, D, spec.table);
     if (!rows) return { error: 'Unknown table. Use one of: ' + Object.keys(QUERY_TABLES).join(', ') };
@@ -803,13 +902,13 @@
       return post(number());
     }
     function post(v) { if (s[i] === '%') { i++; return v / 100; } return v; }
-    function pow() { let v = factor(); while (s[i] === '^') { i++; v = Math.pow(v, factor()); } return v; }
+    function pow() { const v = factor(); if (s[i] === '^') { i++; return Math.pow(v, pow()); } return v; }
     function term() { let v = pow(); while (s[i] === '*' || s[i] === '/') { const o = s[i++]; const r = pow(); v = o === '*' ? v * r : v / r; } return v; }
     function expr0() { let v = term(); while (s[i] === '+' || s[i] === '-') { const o = s[i++]; const r = term(); v = o === '+' ? v + r : v - r; } return v; }
     const v = expr0(); if (i < s.length) throw new Error('Unexpected "' + s[i] + '"');
     return round(v, 6);
   }
 
-  const api = { funnelView, forecast, checkpoints, campState, planDecisionsAt, reserveReleased, betRows, reservePlan, reserveLeft, shareAt, weekOf, TABLES, SHEETS, KEYS, REQUIRED, DEFAULT_ASSUMPTIONS, DEFAULT_RULES, QUERY_TABLES, normTime, rowsToObjects, validate, applyEdits, build, snapshot, kpis, projection, campaignRows, funnel, anonFunnel, trend, pace, budget, dayStats, quality, explainChange, calibration, whatIf, flags, query, calculate, targetAt, addDays, daysBetween, campName, ownerName, round };
+  const api = { trancheEffect, userEffects, userChanged, windowShare, funnelView, forecast, checkpoints, campState, planDecisionsAt, reserveReleased, betRows, reservePlan, reserveLeft, shareAt, weekOf, TABLES, SHEETS, KEYS, REQUIRED, DEFAULT_ASSUMPTIONS, DEFAULT_RULES, QUERY_TABLES, normTime, rowsToObjects, validate, applyEdits, build, snapshot, kpis, projection, campaignRows, funnel, anonFunnel, trend, pace, budget, dayStats, quality, explainChange, calibration, whatIf, flags, query, calculate, targetAt, addDays, daysBetween, campName, ownerName, round };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GCEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -71,7 +71,9 @@ svg text{font:11.5px Inter,sans-serif;fill:var(--mute)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .btn:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,tr:focus-visible{outline:2px solid #2f6fed;outline-offset:2px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.scroll{overflow-x:auto}
+.bets td:first-child{min-width:190px}.bets th,.bets td{padding-left:8px;padding-right:8px}
+.scroll{overflow-x:auto;background:linear-gradient(90deg,#fff 30%,rgba(255,255,255,0)) left/24px 100% no-repeat local,linear-gradient(270deg,#fff 30%,rgba(255,255,255,0)) right/24px 100% no-repeat local,radial-gradient(farthest-side at 100% 50%,rgba(0,0,0,.16),rgba(0,0,0,0)) right/10px 100% no-repeat scroll;}
+@media (max-width:700px){.scroll::before{content:'Swipe the table sideways →';display:block;font-size:12px;color:#6b7280;margin:0 0 4px}}
 table{border-collapse:collapse;width:100%;font-size:13.5px}
 th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 th{font-weight:600;color:var(--mute);font-size:12px;white-space:nowrap;background:var(--soft)}
